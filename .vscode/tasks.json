@@ -1,0 +1,107 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Generate Win64 VS2022",
+            "type": "shell",
+            "command": "contrib/bin/premake5",
+            "args": [
+                "vs2022",
+                "--platform=win64"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": true
+            }
+        },
+        {
+            "label": "Build Win64 VS2022 - Debug",
+            "type": "shell",
+            "command": "msbuild",
+            "args": [
+                "build/win64/emulator.sln",
+                "/p:Configuration=Debug"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": true
+            },
+            "dependsOn": [
+                "Generate Win64 VS2022"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "Build Win64 VS2022 - Release",
+            "type": "shell",
+            "command": "msbuild",
+            "args": [
+                "build/win64/emulator.sln",
+                "/p:Configuration=Release"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": true
+            },
+            "dependsOn": [
+                "Generate Win64 VS2022"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        
+        {
+            "label": "Run Unit Tests - Win64 VS2022 Debug",
+            "type": "shell",
+            "command": "./build/win64/Debug/emulatorTests.exe",
+            "group": {
+                "kind": "test"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "dependsOn": [
+                "Build Win64 VS2022 - Debug"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Unit Tests - Win64 VS2022 Release",
+            "type": "shell",
+            "command": "./build/win64/Release/emulatorTests.exe",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "dependsOn": [
+                "Build Win64 VS2022 - Release"
+            ]
+        },
+    ]
+}
