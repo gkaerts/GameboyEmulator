@@ -1,9 +1,8 @@
 #pragma once
-#include "LR35902.hpp"
+#include "SM83.hpp"
 
-namespace emu::LR35902
+namespace emu::SM83
 {
-
     struct ALUOutput
     {
         uint8_t _result;
@@ -11,8 +10,19 @@ namespace emu::LR35902
     };
 
     ALUOutput ProcessALUOp(
-        ALUOp op, 
+        ALUOp op,
         uint8_t flagsIn, 
         uint8_t operandA, 
         uint8_t operandB);
+
+
+    struct IDUOutput
+    {
+        uint16_t _result;
+    };
+
+    IDUOutput ProcessIDUOp(
+        IDUOp op,
+        uint16_t operand);
+
 }

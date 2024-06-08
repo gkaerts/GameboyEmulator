@@ -2,7 +2,7 @@
 
 #include <array>
 
-namespace emu::LR35902
+namespace emu::SM83
 {
     namespace
     {
@@ -32,39 +32,85 @@ namespace emu::LR35902
             return REGISTER_OPERAND_LUT[regIdx];
         }
 
-        MCycle MakeFetchCyle(ALUOp aluOp, RegisterOperand operandB, RegisterOperand storeDest)
+        MCycle::ALU MakeALU(
+            ALUOp op,
+            RegisterOperand operandA,
+            RegisterOperand operandB)
         {
             return {
-                ._type = MCycle::Type::Fetch,
-                ._aluOp = aluOp,
-                ._operandB = operandB,
-                ._storeDest = storeDest,
-                ._memReadSrc = MemReadSrc::None,
-                ._memWriteDest = MemWriteDest::None
+                ._op = op,
+                ._operandA = operandA,
+                ._operandB = operandB
             };
         }
 
-        MCycle MakeMemReadCycle(ALUOp aluOp, RegisterOperand storeDest, MemReadSrc memReadSrc)
+        MCycle::ALU NoALU()
         {
             return {
-                ._type = MCycle::Type::MemRead,
-                ._aluOp = aluOp,
-                ._operandB = RegisterOperand::None,
-                ._storeDest = storeDest,
-                ._memReadSrc = memReadSrc,
-                ._memWriteDest = MemWriteDest::None
+                ._op = ALUOp::Nop,
+                ._operandA = RegisterOperand::None,
+                ._operandB = RegisterOperand::None
             };
         }
 
-        MCycle MakeMemWriteCycle(ALUOp aluOp, RegisterOperand operandB, MemWriteDest memWriteDest)
+        MCycle::IDU MakeIDU(
+            IDUOp op,
+            WideRegisterOperand operand)
         {
             return {
-                ._type = MCycle::Type::MemWrite,
-                ._aluOp = aluOp,
-                ._operandB = operandB,
-                ._storeDest = RegisterOperand::None,
-                ._memReadSrc = MemReadSrc::None,
-                ._memWriteDest = memWriteDest
+                ._op = op,
+                ._operand = operand
+            };
+        }
+
+        MCycle::IDU NoIDU()
+        {
+            return {
+                ._op = IDUOp::Nop,
+                ._operand = WideRegisterOperand::None
+            };
+        }
+
+        MCycle::MemOp MakeMemRead(
+            WideRegisterOperand src,
+            RegisterOperand dest)
+        {
+            return {
+                ._type = MCycle::MemOp::Type::Read,
+                ._readSrcOrWriteDest = src,
+                ._readDestOrWriteSrc = dest
+            };
+        }
+
+        MCycle::MemOp MakeMemWrite(
+            RegisterOperand src,
+            WideRegisterOperand dest)
+        {
+            return {
+                ._type = MCycle::MemOp::Type::Write,
+                ._readSrcOrWriteDest = dest,
+                ._readDestOrWriteSrc = src
+            };
+        }
+
+        MCycle::MemOp NoMem()
+        {
+            return {
+                ._type = MCycle::MemOp::Type::None,
+                ._readSrcOrWriteDest = WideRegisterOperand::None,
+                ._readDestOrWriteSrc = RegisterOperand::None
+            };
+        }
+
+        MCycle MakeCycle(
+            const MCycle::ALU& alu,
+            const MCycle::IDU& idu,
+            const MCycle::MemOp& memOp)
+        {
+            return {
+                ._alu = alu,
+                ._idu = idu,
+                ._memOp = memOp
             };
         }
 
@@ -75,7 +121,7 @@ namespace emu::LR35902
                 return {
                     .cycleCount = 1,
                     .cycles = {
-                        MakeFetchCyle(ALUOp::Inc, operand, operand)
+                        MakeCycle(MakeALU(ALUOp::Inc, operand, operand), NoIDU(), NoMem())
                     }
                 };
             };
@@ -85,7 +131,7 @@ namespace emu::LR35902
                 return {
                     .cycleCount = 1,
                     .cycles = {
-                        MakeFetchCyle(ALUOp::Dec, operand, operand)
+                        MakeCycle(MakeALU(ALUOp::Dec, operand, operand), NoIDU(), NoMem())
                     }
                 };
             };
@@ -108,6 +154,41 @@ namespace emu::LR35902
             INSTRUCTIONS[0x3D] = MakeDecInstruction(RegisterOperand::RegA);
         }
 
+        void PopulateQuadrant0016BitIncDecInstructions()
+        {
+            auto MakeIncInstruction = [](WideRegisterOperand operand) -> Instruction
+            {
+                return {
+                    .cycleCount = 2,
+                    .cycles = {
+                        MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, operand), NoMem()),
+                        MakeCycle(NoALU(), NoIDU(), NoMem())                         // Wait cycle (Overlapping fetch cycle needs IDU for PC increment)
+                    }
+                };
+            };
+
+            auto MakeDecInstruction = [](WideRegisterOperand operand) -> Instruction
+            {
+                return {
+                    .cycleCount = 1,
+                    .cycles = {
+                        MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, operand), NoMem()),
+                        MakeCycle(NoALU(), NoIDU(), NoMem())                         // Wait cycle (Overlapping fetch cycle needs IDU for PC increment)
+                    }
+                };
+            };
+
+            INSTRUCTIONS[0x03] = MakeIncInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0x13] = MakeIncInstruction(WideRegisterOperand::RegDE);
+            INSTRUCTIONS[0x23] = MakeIncInstruction(WideRegisterOperand::RegHL);
+            INSTRUCTIONS[0x33] = MakeIncInstruction(WideRegisterOperand::RegSP);
+
+            INSTRUCTIONS[0x0B] = MakeDecInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0x1B] = MakeDecInstruction(WideRegisterOperand::RegDE);
+            INSTRUCTIONS[0x2B] = MakeDecInstruction(WideRegisterOperand::RegHL);
+            INSTRUCTIONS[0x3B] = MakeDecInstruction(WideRegisterOperand::RegSP);
+        }
+
         void PopulateQuadrant00ImmediateLDInstructions()
         {
             auto MakeImmLDInstruction = [](RegisterOperand operand) -> Instruction
@@ -115,8 +196,8 @@ namespace emu::LR35902
                 return {
                     .cycleCount = 2,
                     .cycles = {
-                        MakeFetchCyle(ALUOp::Nop, RegisterOperand::None, RegisterOperand::None),
-                        MakeMemReadCycle(ALUOp::Nop, operand, MemReadSrc::RegPC)
+                        MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                        MakeCycle(MakeALU(ALUOp::Nop, operand, RegisterOperand::TempRegZ), NoIDU(), NoMem())
                     }
                 };
             };
@@ -145,7 +226,7 @@ namespace emu::LR35902
                     INSTRUCTIONS[op] = { 
                         .cycleCount = 1, 
                         .cycles = { 
-                            MakeFetchCyle(ALUOp::Nop, OpCodeRegisterIndexToRegisterOperand(z), OpCodeRegisterIndexToRegisterOperand(y))
+                            MakeCycle(MakeALU(ALUOp::Nop, OpCodeRegisterIndexToRegisterOperand(y), OpCodeRegisterIndexToRegisterOperand(z)), NoIDU(), NoMem())
                         }
                     };
                 }
@@ -159,8 +240,8 @@ namespace emu::LR35902
                 return {
                     .cycleCount = 2,
                     .cycles = {
-                        MakeFetchCyle(ALUOp::Nop, RegisterOperand::None, RegisterOperand::None),
-                        MakeMemReadCycle(ALUOp::Nop, operand, MemReadSrc::RegHL)
+                        MakeCycle(NoALU(), NoIDU(), MakeMemRead(WideRegisterOperand::RegHL, RegisterOperand::TempRegZ)),
+                        MakeCycle(MakeALU(ALUOp::Nop, operand, RegisterOperand::TempRegZ), NoIDU(), NoMem())
                     }
                 };
             };
@@ -181,8 +262,8 @@ namespace emu::LR35902
                 return {
                     .cycleCount = 2,
                     .cycles = {
-                        MakeFetchCyle(ALUOp::Nop, RegisterOperand::None, RegisterOperand::None),
-                        MakeMemWriteCycle(ALUOp::Nop, operand, MemWriteDest::RegHL)
+                        MakeCycle(NoALU(), NoIDU(), MakeMemWrite(operand, WideRegisterOperand::RegHL)),
+                        MakeCycle(NoALU(), NoIDU(), NoMem())                                               // Wait cycle because fetch cycle needs address bus for opcode fetch
                     }
                 };
             };
@@ -210,8 +291,8 @@ namespace emu::LR35902
                     uint8_t op = 0x80 | ((y & 0x07) << 3) | (z & 0x07);
                     INSTRUCTIONS[op] = { 
                         .cycleCount = 1, 
-                        .cycles = { 
-                            MakeFetchCyle(ALUOp(y), OpCodeRegisterIndexToRegisterOperand(z), RegisterOperand::RegA)
+                        .cycles = {
+                            MakeCycle(MakeALU(ALUOp(y), RegisterOperand::RegA, OpCodeRegisterIndexToRegisterOperand(z)), NoIDU(), NoMem())
                         }
                     };
                 }
@@ -225,8 +306,8 @@ namespace emu::LR35902
                 return {
                     .cycleCount = 2,
                     .cycles = {
-                        MakeFetchCyle(ALUOp::Nop, RegisterOperand::None, RegisterOperand::None),
-                        MakeMemReadCycle(op, RegisterOperand::RegA, MemReadSrc::RegHL)
+                        MakeCycle(NoALU(), NoIDU(), MakeMemRead(WideRegisterOperand::RegHL, RegisterOperand::TempRegZ)),
+                        MakeCycle(MakeALU(op, RegisterOperand::RegA, RegisterOperand::TempRegZ), NoIDU(), NoMem())
                     }
                 };
             };
@@ -248,8 +329,8 @@ namespace emu::LR35902
                 return {
                     .cycleCount = 2,
                     .cycles = {
-                        MakeFetchCyle(ALUOp::Nop, RegisterOperand::None, RegisterOperand::None),
-                        MakeMemReadCycle(op, RegisterOperand::RegA, MemReadSrc::RegPC)
+                        MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                        MakeCycle(MakeALU(op, RegisterOperand::RegA, RegisterOperand::TempRegZ), NoIDU(), NoMem())
                     }
                 };
             };
@@ -270,12 +351,13 @@ namespace emu::LR35902
             INSTRUCTIONS[0x00] = {
                 .cycleCount = 1,
                 .cycles = {
-                    MakeFetchCyle(ALUOp::Nop, RegisterOperand::None, RegisterOperand::None)
+                    MakeCycle(NoALU(), NoIDU(), NoMem())
                 }
             };
 
             PopulateQuadrant00BasicIncDecInstructions();
             PopulateQuadrant00ImmediateLDInstructions();
+            PopulateQuadrant0016BitIncDecInstructions();
             PopulateQuadrant01BasicLDInstructions();
             PopulateQuadrant01IndirectLDInstructions();
             PopulateQuadrant01IndirectStoreLDInstructions();
@@ -292,24 +374,22 @@ namespace emu::LR35902
             }
 
         } OPCODE_STATIC_INIT;
+
+        const MCycle FETCH_MCYCLE = MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::RegIR));
     }
+
+    const MCycle& GetFetchMCycle() { return FETCH_MCYCLE; };
 
     uint8_t GetMCycleCount(uint8_t opCode)
     {
         return INSTRUCTIONS[opCode].cycleCount;
     }
 
-    MCycle GetMCycle(uint8_t opCode, uint8_t mCycleIndex)
+    const MCycle& GetMCycle(uint8_t opCode, uint8_t mCycleIndex)
     {
         const Instruction& i = INSTRUCTIONS[opCode];
         EMU_ASSERT("MCycle index out of bounds" && mCycleIndex < i.cycleCount);
 
         return i.cycles[mCycleIndex];
-    }
-
-    MCycle::Type GetNextMCycleType(uint8_t opCode, uint8_t mCycleIndex)
-    {
-        const Instruction& i = INSTRUCTIONS[opCode];
-        return (mCycleIndex == i.cycleCount - 1) ? MCycle::Type::Fetch : i.cycles[mCycleIndex + 1]._type;
     }
 }

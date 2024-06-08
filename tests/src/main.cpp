@@ -7,12 +7,10 @@ int main(int argc, char* argv[])
 }
 
 
-#include "LR35902.hpp"
+#include "SM83.hpp"
+#include "memory.hpp"
 TEST(CPUTests, SimpleTest)
 {
-    emu::LR35902::CPU cpu;
-    emu::LR35902::Boot(&cpu, 0, 0);
-
     uint8_t memory[2048] =
     {
         0x3C,       // INC A
@@ -32,33 +30,47 @@ TEST(CPUTests, SimpleTest)
         0x00,       // NOP
     };
 
-    emu::LR35902::Tick(&cpu, memory, 4);
+
+    emu::SM83::MemoryController memCtrl =
+    {
+        ._memory = memory
+    };
+
+    
+    emu::SM83::CPU cpu;
+    emu::SM83::Boot(&cpu, 0, 0);
+
+    // First fetch cycle
+    emu::SM83::Tick(&cpu, memCtrl, 4);
+
+    // Start executing instructions
+    emu::SM83::Tick(&cpu, memCtrl, 4);
     ASSERT_EQ(cpu._registers._reg8.A, 1);
 
-    emu::LR35902::Tick(&cpu, memory, 4);
+    emu::SM83::Tick(&cpu, memCtrl, 4);
     ASSERT_EQ(cpu._registers._reg8.A, 2);
 
-    emu::LR35902::Tick(&cpu, memory, 4);
+    emu::SM83::Tick(&cpu, memCtrl, 4);
     ASSERT_EQ(cpu._registers._reg8.A, 3);
 
-    emu::LR35902::Tick(&cpu, memory, 4);
+    emu::SM83::Tick(&cpu, memCtrl, 4);
     ASSERT_EQ(cpu._registers._reg8.B, 3);
 
-    emu::LR35902::Tick(&cpu, memory, 4);
+    emu::SM83::Tick(&cpu, memCtrl, 4);
     ASSERT_EQ(cpu._registers._reg8.A, 6);
 
-    emu::LR35902::Tick(&cpu, memory, 4);
+    emu::SM83::Tick(&cpu, memCtrl, 4);
     ASSERT_EQ(cpu._registers._reg8.A, 0);
 
-    emu::LR35902::Tick(&cpu, memory, 8);
+    emu::SM83::Tick(&cpu, memCtrl, 8);
     ASSERT_EQ(cpu._registers._reg8.A, 0xA5);
 
-    emu::LR35902::Tick(&cpu, memory, 8);
+    emu::SM83::Tick(&cpu, memCtrl, 8);
     ASSERT_EQ(cpu._registers._reg8.B, 0x02);
 
-    emu::LR35902::Tick(&cpu, memory, 4);
+    emu::SM83::Tick(&cpu, memCtrl, 4);
     ASSERT_EQ(cpu._registers._reg8.A, 0xA7);
 
-    emu::LR35902::Tick(&cpu, memory, 32);
+    emu::SM83::Tick(&cpu, memCtrl, 32);
     ASSERT_EQ(memory[0xFF], 0x02);
 }

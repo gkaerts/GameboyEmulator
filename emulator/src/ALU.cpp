@@ -1,7 +1,7 @@
 #include "ALU.hpp"
-#include "LR35902.hpp"
+#include "SM83.hpp"
 
-namespace emu::LR35902
+namespace emu::SM83
 {
     namespace
     {
@@ -122,7 +122,10 @@ namespace emu::LR35902
                     HasHalfCarry(1, operandB),
                     true,
                     resultWide);
-            break;            
+            break;           
+        case ALUOp::Nop:
+            resultWide = operandBWide;
+            break; 
         default:
             break;
         }
@@ -131,6 +134,29 @@ namespace emu::LR35902
         {
             ._result = uint8_t(resultWide & 0xFF),
             ._flags = flagsOut
+        };
+    }
+
+    IDUOutput ProcessIDUOp(
+        IDUOp op,
+        uint16_t operand)
+    {
+        uint16_t result = 0;
+
+        switch (op)
+        {
+        case IDUOp::Inc:
+            result = operand + 1;
+            break;
+        case IDUOp::Dec:
+            result = operand - 1;
+            break;
+        default:
+            break;
+        }
+
+        return {
+            ._result = result
         };
     }
 }

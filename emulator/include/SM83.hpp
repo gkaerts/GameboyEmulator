@@ -2,7 +2,7 @@
 
 #include "common.hpp"
 
-namespace emu::LR35902
+namespace emu::SM83
 {
     enum StatusFlag
     {
@@ -21,6 +21,9 @@ namespace emu::LR35902
                 uint16_t BC, DE, HL;    // General purpose
                 uint16_t FA;            // Flags and accumulator
                 uint16_t SP, PC;        // Stack pointer and program counter
+
+                uint16_t TempZW;        // Temporary internal registers
+                uint16_t IR_IE;
             } _reg16;
 
             struct
@@ -28,10 +31,12 @@ namespace emu::LR35902
                 uint8_t C, B, E, D, L, H;
                 uint8_t F, A;
                 uint8_t SPL, SPH, PCL, PCH;
+                uint8_t W, Z;
+                uint8_t IE, IR;
             } _reg8;
 
-            uint16_t _reg16Arr[6];
-            uint8_t _reg8Arr[12];
+            uint16_t _reg16Arr[8];
+            uint8_t _reg8Arr[16];
         };
     };
 
@@ -41,17 +46,9 @@ namespace emu::LR35902
         {
             // System Control
             uint8_t M1 : 1;
-            uint8_t MREQ : 1;
-            uint8_t IORQ : 1;
+            uint8_t MRQ : 1;
             uint8_t RD : 1;
             uint8_t WR : 1;
-            uint8_t RFSH : 1;
-
-            // CPU Control
-            uint8_t HALT : 1;
-
-            // CPU Bus Control
-            uint8_t BUSACK : 1;
         };
 
         uint16_t _address;  // Address bus (pins A0-A15)
@@ -60,6 +57,7 @@ namespace emu::LR35902
 
     };
 
+    // Arithmetic Logic Unit (8 bit)
     enum class ALUOp
     {
         Add = 0,
@@ -78,6 +76,15 @@ namespace emu::LR35902
         Nop
     };
 
+    // Increment Decrement Unit (16 bit)
+    enum class IDUOp
+    {
+        Inc = 0,
+        Dec,
+
+        Nop
+    };
+
     enum class RegisterOperand : uint8_t
     {
         RegC = 0,
@@ -86,47 +93,69 @@ namespace emu::LR35902
         RegD,
         RegL,
         RegH,
-        RegF,
+        RegF,   // Not legal to use
         RegA,
+        RegSPL,
+        RegSPH,
+        RegPCL,
+        RegPCH,
+        TempRegW,
+        TempRegZ,
+        RegIE,
+        RegIR,
 
         None = 0xFF
     };
 
-    enum class MemReadSrc : uint8_t
+    enum class WideRegisterOperand : uint8_t
     {
-        RegHL = 0x02,
-        RegSP = 0x04,
-        RegPC = 0x05,
-
-        None = 0xFF
-    };
-
-    enum class MemWriteDest : uint8_t
-    {
-        RegHL = 0x02,
+        RegBC = 0,
+        RegDE,
+        RegHL,
+        RegFA,  // Not legal to use
+        RegSP,
+        RegPC,
+        RegZW,
+        RegIRIE,
 
         None = 0xFF
     };
 
     struct MCycle
     {
-        enum class Type
+        struct ALU
         {
-            Fetch = 0,
-            MemRead,
-            MemWrite
+            ALUOp _op;
+            RegisterOperand _operandA;
+            RegisterOperand _operandB;
+        };
+            
+        struct IDU
+        {
+            IDUOp _op;
+            WideRegisterOperand _operand;
         };
 
-        Type _type;
-        ALUOp _aluOp;
-        RegisterOperand _operandB;
-        RegisterOperand _storeDest;
+        struct MemOp
+        {
+            enum class Type : uint8_t
+            {
+                None = 0,
+                Read,
+                Write
+            };
 
-        MemReadSrc _memReadSrc;
-        MemWriteDest _memWriteDest;
+            Type _type;
+            WideRegisterOperand _readSrcOrWriteDest;
+            RegisterOperand _readDestOrWriteSrc;
+        };
+
+        ALU _alu;
+        IDU _idu;
+        MemOp _memOp;
     };
 
-    enum TCycle
+    enum TCycleState
     {
         T1_0 = 0,
         T1_1,
@@ -140,9 +169,16 @@ namespace emu::LR35902
 
     struct Decoder
     {
-        MCycle::Type _currMCycleType;
+        enum Flags
+        {
+            DF_None = 0x0,
+            DF_CurrentCycleIsFetchCycle = 0x01,
+        };
+
+        uint8_t _flags;
+        MCycle _currMCycle;
         uint8_t _mCycleIndex;
-        TCycle _tCycleIndex;
+        TCycleState _tCycleState;
 
         uint8_t IR;
         uint8_t _temp;
@@ -155,6 +191,8 @@ namespace emu::LR35902
         Decoder _decoder;
     };
 
+    struct MemoryController;
+
     void Boot(CPU* cpu, uint16_t initSP, uint16_t initPC);
-    void Tick(CPU* cpu, uint8_t* memory, uint32_t cycles);
+    void Tick(CPU* cpu, MemoryController& memCtrl, uint32_t cycles);
 }
