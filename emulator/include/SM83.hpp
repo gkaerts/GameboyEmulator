@@ -31,7 +31,7 @@ namespace emu::SM83
                 uint8_t C, B, E, D, L, H;
                 uint8_t F, A;
                 uint8_t SPL, SPH, PCL, PCH;
-                uint8_t W, Z;
+                uint8_t Z, W;
                 uint8_t IE, IR;
             } _reg8;
 
@@ -99,8 +99,8 @@ namespace emu::SM83
         RegSPH,
         RegPCL,
         RegPCH,
-        TempRegW,
         TempRegZ,
+        TempRegW,
         RegIE,
         RegIR,
 
@@ -115,7 +115,7 @@ namespace emu::SM83
         RegFA,  // Not legal to use
         RegSP,
         RegPC,
-        RegZW,
+        RegWZ,
         RegIRIE,
 
         None = 0xFF
@@ -150,9 +150,22 @@ namespace emu::SM83
             RegisterOperand _readDestOrWriteSrc;
         };
 
+        struct Misc
+        {
+            enum Flags : uint8_t
+            {
+                MF_None = 0x0,
+                MF_WriteWZToWideRegister = 0x01
+            };
+
+            uint8_t _flags;
+            WideRegisterOperand _wideOperand;
+        };
+
         ALU _alu;
         IDU _idu;
         MemOp _memOp;
+        Misc _misc;
     };
 
     enum TCycleState

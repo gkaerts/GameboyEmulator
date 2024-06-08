@@ -102,15 +102,33 @@ namespace emu::SM83
             };
         }
 
+        MCycle::Misc MakeMisc(uint8_t miscFlags, WideRegisterOperand operand)
+        {
+            return {
+                ._flags = miscFlags,
+                ._wideOperand = operand
+            };
+        }
+
+        MCycle::Misc NoMisc()
+        {
+            return {
+                ._flags = MCycle::Misc::MF_None,
+                ._wideOperand = WideRegisterOperand::None
+            };
+        }
+
         MCycle MakeCycle(
             const MCycle::ALU& alu,
             const MCycle::IDU& idu,
-            const MCycle::MemOp& memOp)
+            const MCycle::MemOp& memOp,
+            const MCycle::Misc& misc = NoMisc())
         {
             return {
                 ._alu = alu,
                 ._idu = idu,
-                ._memOp = memOp
+                ._memOp = memOp,
+                ._misc = misc
             };
         }
 
@@ -122,7 +140,7 @@ namespace emu::SM83
                 ._cycleCount = uint32_t(cycles.size()),
             };
 
-            std::memcpy(instruction._cycles.data(), cycles.begin(), std::min(MAX_MCYCLE_COUNT, instruction._cycleCount));
+            std::memcpy(instruction._cycles.data(), cycles.begin(), sizeof(MCycle) * std::min(MAX_MCYCLE_COUNT, instruction._cycleCount));
             return instruction;
         }
 
@@ -206,6 +224,23 @@ namespace emu::SM83
             INSTRUCTIONS[0x26] = MakeImmLDInstruction(RegisterOperand::RegH);
             INSTRUCTIONS[0x2E] = MakeImmLDInstruction(RegisterOperand::RegL);
             INSTRUCTIONS[0x3E] = MakeImmLDInstruction(RegisterOperand::RegA);
+        }
+
+        void PopulateQuadrant0016BitImmediateLDInstructions()
+        {
+            auto MakeImmLDInstruction = [](WideRegisterOperand operand) -> Instruction
+            {
+               return MakeInstruction({
+                        MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                        MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegW)),
+                        MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, operand))
+                    });
+            };
+
+            INSTRUCTIONS[0x01] = MakeImmLDInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0x11] = MakeImmLDInstruction(WideRegisterOperand::RegDE);
+            INSTRUCTIONS[0x21] = MakeImmLDInstruction(WideRegisterOperand::RegHL);
+            INSTRUCTIONS[0x31] = MakeImmLDInstruction(WideRegisterOperand::RegSP);
         }
 
         void PopulateQuadrant01BasicLDInstructions()
@@ -334,6 +369,7 @@ namespace emu::SM83
             PopulateQuadrant00BasicIncDecInstructions();
             PopulateQuadrant00ImmediateLDInstructions();
             PopulateQuadrant0016BitIncDecInstructions();
+            PopulateQuadrant0016BitImmediateLDInstructions();
             PopulateQuadrant01BasicLDInstructions();
             PopulateQuadrant01IndirectLDInstructions();
             PopulateQuadrant01IndirectStoreLDInstructions();

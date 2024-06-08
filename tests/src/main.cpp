@@ -13,27 +13,30 @@ TEST(CPUTests, SimpleTest)
 {
     uint8_t memory[2048] =
     {
-        0x3C,       // INC A
-        0x3C,       // INC A
-        0x3C,       // INC A
-        0x47,       // LD B, A
-        0x80,       // ADD A, B
-        0xAF,       // XOR A
-        0x3E, 0xA5, // LD A, A5h
-        0x06, 0x02, // LD B, 02h
-        0x80,       // ADD A, B
-        0x3E, 0x00, // LD A, 00h
-        0x67,       // LD H, A
-        0x3E, 0xFF, // LD A, FFh
-        0x6F,       // LD L, A
-        0x70,       // LD (HL), B
+        0x3C,               // INC A
+        0x3C,               // INC A
+        0x3C,               // INC A
+        0x47,               // LD B, A
+        0x80,               // ADD A, B
+        0xAF,               // XOR A
+        0x3E, 0xA5,         // LD A, A5h
+        0x06, 0x02,         // LD B, 02h
+        0x80,               // ADD A, B
+        0x3E, 0x00,         // LD A, 00h
+        0x67,               // LD H, A
+        0x3E, 0xFF,         // LD A, FFh
+        0x6F,               // LD L, A
+        0x70,               // LD (HL), B
 
-        0x06, 0x00, // LB B, 00h
-        0x0E, 0x00, // LD C, 00h
-        0x03,       // INC BC
-        0x03,       // INC BC,
-        0x0B,       // DEC BC
-        0x00,       // NOP
+        0x06, 0x00,         // LB B, 00h
+        0x0E, 0x00,         // LD C, 00h
+        0x03,               // INC BC
+        0x03,               // INC BC,
+        0x0B,               // DEC BC
+
+        0x21, 0x40, 0x02,   // LD HL 0240h
+
+        0x00,               // NOP
     };
 
 
@@ -88,4 +91,7 @@ TEST(CPUTests, SimpleTest)
 
     emu::SM83::Tick(&cpu, memCtrl, 8);
     ASSERT_EQ(cpu._registers._reg16.BC, 1);
+
+    emu::SM83::Tick(&cpu, memCtrl, 12);
+    ASSERT_EQ(cpu._registers._reg16.HL, 0x0240);
 }

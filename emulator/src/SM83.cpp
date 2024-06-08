@@ -119,6 +119,12 @@ namespace emu::SM83
                         aluOperandA = aluResult._result;
                         regs._reg8.F = aluResult._flags;
                     }
+
+                    // Handle Misc operations
+                    if (mCycle._misc._flags & MCycle::Misc::MF_WriteWZToWideRegister)
+                    {
+                        regs._reg16Arr[uint8_t(mCycle._misc._wideOperand)] = regs._reg16Arr[uint8_t(WideRegisterOperand::RegWZ)];
+                    }
                 }
                     break;
                 case T3_1:
