@@ -84,7 +84,7 @@ namespace emu::SM83
                 case T2_1:
                 {
                     // If memory was requested it is now on the data bus. Put it in destination register
-                    // This handles settings the instruction register in a fetch cycle!!
+                    // This handles setting the instruction register in a fetch cycle!!
                     if (mCycle._memOp._type == MCycle::MemOp::Type::Read)
                     {
                         regs._reg8Arr[uint8_t(mCycle._memOp._readDestOrWriteSrc)] = io._data;

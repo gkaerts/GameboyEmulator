@@ -9,8 +9,8 @@ namespace emu::SM83
         constexpr const uint32_t MAX_MCYCLE_COUNT = 4;
         struct Instruction
         {
-            uint32_t cycleCount;
-            std::array<MCycle, MAX_MCYCLE_COUNT> cycles;
+            uint32_t _cycleCount;
+            std::array<MCycle, MAX_MCYCLE_COUNT> _cycles;
         };
 
         Instruction INSTRUCTIONS[0xFF] = {};
@@ -114,26 +114,32 @@ namespace emu::SM83
             };
         }
 
+        Instruction MakeInstruction(std::initializer_list<MCycle> cycles)
+        {
+            EMU_ASSERT(cycles.size() <= MAX_MCYCLE_COUNT);
+            Instruction instruction =
+            {
+                ._cycleCount = uint32_t(cycles.size()),
+            };
+
+            std::memcpy(instruction._cycles.data(), cycles.begin(), std::min(MAX_MCYCLE_COUNT, instruction._cycleCount));
+            return instruction;
+        }
+
         void PopulateQuadrant00BasicIncDecInstructions()
         {
             auto MakeIncInstruction = [](RegisterOperand operand) -> Instruction
             {
-                return {
-                    .cycleCount = 1,
-                    .cycles = {
+                return MakeInstruction({
                         MakeCycle(MakeALU(ALUOp::Inc, operand, operand), NoIDU(), NoMem())
-                    }
-                };
+                    });
             };
 
             auto MakeDecInstruction = [](RegisterOperand operand) -> Instruction
             {
-                return {
-                    .cycleCount = 1,
-                    .cycles = {
+                return MakeInstruction({
                         MakeCycle(MakeALU(ALUOp::Dec, operand, operand), NoIDU(), NoMem())
-                    }
-                };
+                    });
             };
 
 
@@ -158,24 +164,18 @@ namespace emu::SM83
         {
             auto MakeIncInstruction = [](WideRegisterOperand operand) -> Instruction
             {
-                return {
-                    .cycleCount = 2,
-                    .cycles = {
+                return MakeInstruction({
                         MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, operand), NoMem()),
                         MakeCycle(NoALU(), NoIDU(), NoMem())                         // Wait cycle (Overlapping fetch cycle needs IDU for PC increment)
-                    }
-                };
+                    });
             };
 
             auto MakeDecInstruction = [](WideRegisterOperand operand) -> Instruction
             {
-                return {
-                    .cycleCount = 1,
-                    .cycles = {
+                return MakeInstruction({
                         MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, operand), NoMem()),
                         MakeCycle(NoALU(), NoIDU(), NoMem())                         // Wait cycle (Overlapping fetch cycle needs IDU for PC increment)
-                    }
-                };
+                    });
             };
 
             INSTRUCTIONS[0x03] = MakeIncInstruction(WideRegisterOperand::RegBC);
@@ -193,13 +193,10 @@ namespace emu::SM83
         {
             auto MakeImmLDInstruction = [](RegisterOperand operand) -> Instruction
             {
-                return {
-                    .cycleCount = 2,
-                    .cycles = {
+               return MakeInstruction({
                         MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
                         MakeCycle(MakeALU(ALUOp::Nop, operand, RegisterOperand::TempRegZ), NoIDU(), NoMem())
-                    }
-                };
+                    });
             };
 
             INSTRUCTIONS[0x06] = MakeImmLDInstruction(RegisterOperand::RegB);
@@ -223,12 +220,9 @@ namespace emu::SM83
                     if (z == 6) continue;           // Handle (HL) operand separately
 
                     uint8_t op = 0x40 | ((y & 0x07) << 3) | (z & 0x07);
-                    INSTRUCTIONS[op] = { 
-                        .cycleCount = 1, 
-                        .cycles = { 
+                    INSTRUCTIONS[op] = MakeInstruction({
                             MakeCycle(MakeALU(ALUOp::Nop, OpCodeRegisterIndexToRegisterOperand(y), OpCodeRegisterIndexToRegisterOperand(z)), NoIDU(), NoMem())
-                        }
-                    };
+                        });
                 }
             }
         }
@@ -237,13 +231,10 @@ namespace emu::SM83
         {
             auto MakeIndLDInstruction = [](RegisterOperand operand) -> Instruction
             {
-                return {
-                    .cycleCount = 2,
-                    .cycles = {
+               return MakeInstruction({
                         MakeCycle(NoALU(), NoIDU(), MakeMemRead(WideRegisterOperand::RegHL, RegisterOperand::TempRegZ)),
                         MakeCycle(MakeALU(ALUOp::Nop, operand, RegisterOperand::TempRegZ), NoIDU(), NoMem())
-                    }
-                };
+                    });
             };
 
             INSTRUCTIONS[0x46] = MakeIndLDInstruction(RegisterOperand::RegB);
@@ -259,13 +250,10 @@ namespace emu::SM83
         {
             auto MakeIndStoreLDInstruction = [](RegisterOperand operand) -> Instruction
             {
-                return {
-                    .cycleCount = 2,
-                    .cycles = {
+               return MakeInstruction({
                         MakeCycle(NoALU(), NoIDU(), MakeMemWrite(operand, WideRegisterOperand::RegHL)),
                         MakeCycle(NoALU(), NoIDU(), NoMem())                                               // Wait cycle because fetch cycle needs address bus for opcode fetch
-                    }
-                };
+                    });
             };
 
             INSTRUCTIONS[0x70] = MakeIndStoreLDInstruction(RegisterOperand::RegB);
@@ -289,12 +277,9 @@ namespace emu::SM83
                     if (z == 6) continue;           // Handle (HL) operand separately
 
                     uint8_t op = 0x80 | ((y & 0x07) << 3) | (z & 0x07);
-                    INSTRUCTIONS[op] = { 
-                        .cycleCount = 1, 
-                        .cycles = {
+                    INSTRUCTIONS[op] = MakeInstruction({
                             MakeCycle(MakeALU(ALUOp(y), RegisterOperand::RegA, OpCodeRegisterIndexToRegisterOperand(z)), NoIDU(), NoMem())
-                        }
-                    };
+                        });
                 }
             }
         }
@@ -303,13 +288,10 @@ namespace emu::SM83
         {
             auto MakeIndALUInstruction = [](ALUOp op) -> Instruction
             {
-                return {
-                    .cycleCount = 2,
-                    .cycles = {
+                return MakeInstruction({
                         MakeCycle(NoALU(), NoIDU(), MakeMemRead(WideRegisterOperand::RegHL, RegisterOperand::TempRegZ)),
                         MakeCycle(MakeALU(op, RegisterOperand::RegA, RegisterOperand::TempRegZ), NoIDU(), NoMem())
-                    }
-                };
+                    });
             };
 
             INSTRUCTIONS[0x86] = MakeIndALUInstruction(ALUOp::Add);
@@ -326,13 +308,10 @@ namespace emu::SM83
         {
             auto MakeImmALUInstruction = [](ALUOp op) -> Instruction
             {
-                return {
-                    .cycleCount = 2,
-                    .cycles = {
+                return MakeInstruction({
                         MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
                         MakeCycle(MakeALU(op, RegisterOperand::RegA, RegisterOperand::TempRegZ), NoIDU(), NoMem())
-                    }
-                };
+                    });
             };
 
             INSTRUCTIONS[0xC6] = MakeImmALUInstruction(ALUOp::Add);
@@ -348,12 +327,9 @@ namespace emu::SM83
         void PopulateInstructions()
         {
             // NOP
-            INSTRUCTIONS[0x00] = {
-                .cycleCount = 1,
-                .cycles = {
+            INSTRUCTIONS[0x00] = MakeInstruction({
                     MakeCycle(NoALU(), NoIDU(), NoMem())
-                }
-            };
+                });
 
             PopulateQuadrant00BasicIncDecInstructions();
             PopulateQuadrant00ImmediateLDInstructions();
@@ -382,14 +358,14 @@ namespace emu::SM83
 
     uint8_t GetMCycleCount(uint8_t opCode)
     {
-        return INSTRUCTIONS[opCode].cycleCount;
+        return INSTRUCTIONS[opCode]._cycleCount;
     }
 
     const MCycle& GetMCycle(uint8_t opCode, uint8_t mCycleIndex)
     {
         const Instruction& i = INSTRUCTIONS[opCode];
-        EMU_ASSERT("MCycle index out of bounds" && mCycleIndex < i.cycleCount);
+        EMU_ASSERT("MCycle index out of bounds" && mCycleIndex < i._cycleCount);
 
-        return i.cycles[mCycleIndex];
+        return i._cycles[mCycleIndex];
     }
 }

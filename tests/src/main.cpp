@@ -27,6 +27,12 @@ TEST(CPUTests, SimpleTest)
         0x3E, 0xFF, // LD A, FFh
         0x6F,       // LD L, A
         0x70,       // LD (HL), B
+
+        0x06, 0x00, // LB B, 00h
+        0x0E, 0x00, // LD C, 00h
+        0x03,       // INC BC
+        0x03,       // INC BC,
+        0x0B,       // DEC BC
         0x00,       // NOP
     };
 
@@ -73,4 +79,13 @@ TEST(CPUTests, SimpleTest)
 
     emu::SM83::Tick(&cpu, memCtrl, 32);
     ASSERT_EQ(memory[0xFF], 0x02);
+
+    emu::SM83::Tick(&cpu, memCtrl, 24);
+    ASSERT_EQ(cpu._registers._reg16.BC, 1);
+
+    emu::SM83::Tick(&cpu, memCtrl, 8);
+    ASSERT_EQ(cpu._registers._reg16.BC, 2);
+
+    emu::SM83::Tick(&cpu, memCtrl, 8);
+    ASSERT_EQ(cpu._registers._reg16.BC, 1);
 }
