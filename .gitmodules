@@ -1,3 +1,6 @@
 [submodule "contrib/submodules/googletest"]
 	path = contrib/submodules/googletest
 	url = https://github.com/google/googletest
+[submodule "contrib/submodules/json"]
+	path = contrib/submodules/json
+	url = https://github.com/nlohmann/json
