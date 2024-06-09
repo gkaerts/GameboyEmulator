@@ -16,13 +16,13 @@ namespace emu::SM83
             return ((operandA & 0xF) - (operandB & 0xF)) & 0x10;
         }
 
-        bool SetFlags(bool C, bool H, bool N, uint16_t resultWide)
+        bool SetFlags(bool C, bool H, bool N, bool nonZero)
         {
             uint8_t flags = 0;
             flags |= C ? SF_Carry : 0;
             flags |= H ? SF_HalfCarry : 0;
             flags |= N ? SF_Subtract : 0;
-            flags |= (resultWide == 0) ? SF_Zero : 0;
+            flags |= nonZero ? 0 : SF_Zero;
 
             return flags;
         }
@@ -118,11 +118,93 @@ namespace emu::SM83
         case ALUOp::Dec:
             resultWide = operandBWide - 1;
             flagsOut = SetFlags(
-                    (flagsIn & SF_Carry) > 0,
-                    HasHalfCarry(1, operandB),
-                    true,
-                    resultWide);
-            break;           
+                (flagsIn & SF_Carry) > 0,
+                HasHalfCarry(1, operandB),
+                true,
+                resultWide);
+            break;
+        case ALUOp::Rl:
+            resultWide = operandBWide << 1;
+            flagsOut = SetFlags(
+                HasCarry(resultWide),
+                false,
+                false,
+                true);
+            break;
+        case ALUOp::Rlc:
+        {
+            resultWide = operandBWide << 1;
+            uint16_t rotateCarry = (resultWide & 0x100) ? 1 : 0;
+            resultWide = (resultWide & 0xFFFE) + rotateCarry;
+            flagsOut = SetFlags(
+                HasCarry(resultWide),
+                false,
+                false,
+                true);
+        }
+            break;
+        case ALUOp::Rr:
+            resultWide = operandBWide >> 1;
+            flagsOut = SetFlags(
+                HasCarry(resultWide),
+                false,
+                false,
+                true);
+            break;
+        case ALUOp::Rrc:
+        {
+            uint16_t rotateCarry = (operandBWide & 0x01) << 7;
+            resultWide = operandBWide >> 1;
+            resultWide = (resultWide & 0xFF7F) | rotateCarry;
+            flagsOut = SetFlags(
+                HasCarry(resultWide),
+                false,
+                false,
+                true);
+        }
+            break;        
+        case ALUOp::Da:
+
+            // Decimal adjust. See http://z80-heaven.wikidot.com/instructions-set:daa
+            resultWide = operandBWide;
+            if ((flagsIn & SF_HalfCarry) || (resultWide & 0x0F) > 0x09)
+            {
+                resultWide += 0x06;
+            }
+
+            if (((resultWide & 0xF0) >> 4) > 0x09)
+            {
+                resultWide += 0x60;
+            }
+
+            flagsOut = SetFlags(
+                HasCarry(resultWide),
+                false,
+                flagsIn & SF_Subtract,
+                resultWide);
+            break;
+        case ALUOp::Scf:
+            flagsOut = SetFlags(
+                true,
+                false,
+                false,
+                !(flagsIn & SF_Zero));
+            break;
+        case ALUOp::Ccf:
+            flagsOut = SetFlags(
+                !(flagsIn & SF_Carry),
+                false,
+                false,
+                !(flagsIn & SF_Zero));
+            break;
+        case ALUOp::Cpl:
+            resultWide = ~operandBWide;
+            flagsOut = SetFlags(
+                flagsIn & SF_Carry,
+                true,
+                true,
+                !(flagsIn & SF_Zero));
+            break;
         case ALUOp::Nop:
             resultWide = operandBWide;
             break; 

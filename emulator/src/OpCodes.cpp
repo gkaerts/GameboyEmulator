@@ -32,6 +32,16 @@ namespace emu::SM83
             return REGISTER_OPERAND_LUT[regIdx];
         }
 
+        inline RegisterOperand WideRegisterLSB(WideRegisterOperand reg)
+        {
+            return RegisterOperand(uint8_t(reg) * 2 + 0);
+        }
+
+        inline RegisterOperand WideRegisterMSB(WideRegisterOperand reg)
+        {
+            return RegisterOperand(uint8_t(reg) * 2 + 1);
+        }
+
         MCycle::ALU MakeALU(
             ALUOp op,
             RegisterOperand operandA,
@@ -102,7 +112,7 @@ namespace emu::SM83
             };
         }
 
-        MCycle::Misc MakeMisc(uint8_t miscFlags, WideRegisterOperand operand)
+        MCycle::Misc MakeMisc(uint8_t miscFlags, WideRegisterOperand operand = WideRegisterOperand::None)
         {
             return {
                 ._flags = miscFlags,
@@ -243,6 +253,144 @@ namespace emu::SM83
             INSTRUCTIONS[0x31] = MakeImmLDInstruction(WideRegisterOperand::RegSP);
         }
 
+        void PopulateQuadrant0016BitALUInstructions()
+        {
+            auto Make16BitAddInstruction = [](WideRegisterOperand operandA, WideRegisterOperand operandB) -> Instruction
+            {
+                return MakeInstruction({
+                    MakeCycle(MakeALU(ALUOp::Add, WideRegisterLSB(operandA), WideRegisterLSB(operandB)), NoIDU(), NoMem()),
+                    MakeCycle(MakeALU(ALUOp::Adc, WideRegisterMSB(operandA), WideRegisterMSB(operandB)), NoIDU(), NoMem())
+                });
+            };
+
+            INSTRUCTIONS[0x09] = Make16BitAddInstruction(WideRegisterOperand::RegHL, WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0x19] = Make16BitAddInstruction(WideRegisterOperand::RegHL, WideRegisterOperand::RegDE);
+            INSTRUCTIONS[0x29] = Make16BitAddInstruction(WideRegisterOperand::RegHL, WideRegisterOperand::RegHL);
+            INSTRUCTIONS[0x39] = Make16BitAddInstruction(WideRegisterOperand::RegHL, WideRegisterOperand::RegSP);
+        }
+
+        void PopulateQuadrant00IndirectStoreLDInstructions()
+        {
+            auto MakeIndStoreLDInstruction = [](RegisterOperand src, WideRegisterOperand dest) -> Instruction
+            {
+               return MakeInstruction({
+                        MakeCycle(NoALU(), NoIDU(), MakeMemWrite(src, dest)),
+                        MakeCycle(NoALU(), NoIDU(), NoMem())                                               // Wait cycle because fetch cycle needs address bus for opcode fetch
+                    });
+            };
+
+            auto MakeIndStoreLDInstructionWithIncDec = [](RegisterOperand src, WideRegisterOperand dest, IDUOp op) -> Instruction
+            {
+               return MakeInstruction({
+                        MakeCycle(NoALU(), MakeIDU(op, dest), MakeMemWrite(src, dest)),
+                        MakeCycle(NoALU(), NoIDU(), NoMem())                                               // Wait cycle because fetch cycle needs address bus for opcode fetch
+                    });
+            };
+
+            INSTRUCTIONS[0x02] = MakeIndStoreLDInstruction(RegisterOperand::RegA, WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0x12] = MakeIndStoreLDInstruction(RegisterOperand::RegA, WideRegisterOperand::RegDE);
+            INSTRUCTIONS[0x22] = MakeIndStoreLDInstructionWithIncDec(RegisterOperand::RegA, WideRegisterOperand::RegHL, IDUOp::Inc);
+            INSTRUCTIONS[0x22] = MakeIndStoreLDInstructionWithIncDec(RegisterOperand::RegA, WideRegisterOperand::RegHL, IDUOp::Dec);
+        }
+
+        void PopulateQuadrant00IndirectLDInstructions()
+        {
+            auto MakeIndirectLDInstruction = [](WideRegisterOperand src, RegisterOperand dest) -> Instruction
+            {
+                return MakeInstruction({
+                    MakeCycle(NoALU(), NoIDU(), MakeMemRead(src, RegisterOperand::TempRegZ)),
+                    MakeCycle(MakeALU(ALUOp::Nop, dest, RegisterOperand::TempRegZ), NoIDU(), NoMem())
+                });
+            };
+
+            auto MakeIndirectLDInstructionWithIncDec = [](WideRegisterOperand src, RegisterOperand dest, IDUOp op) -> Instruction
+            {
+                return MakeInstruction({
+                    MakeCycle(NoALU(), MakeIDU(op, src), MakeMemRead(src, RegisterOperand::TempRegZ)),
+                    MakeCycle(MakeALU(ALUOp::Nop, dest, RegisterOperand::TempRegZ), NoIDU(), NoMem())
+                });
+            };
+
+            INSTRUCTIONS[0x0A] = MakeIndirectLDInstruction(WideRegisterOperand::RegBC, RegisterOperand::RegA);
+            INSTRUCTIONS[0x1A] = MakeIndirectLDInstruction(WideRegisterOperand::RegDE, RegisterOperand::RegA);
+            INSTRUCTIONS[0x2A] = MakeIndirectLDInstructionWithIncDec(WideRegisterOperand::RegBC, RegisterOperand::RegA, IDUOp::Inc);
+            INSTRUCTIONS[0x3A] = MakeIndirectLDInstructionWithIncDec(WideRegisterOperand::RegBC, RegisterOperand::RegA, IDUOp::Dec);
+        }
+
+        void PopulateQuadrant00IndirectIncDecInstructions()
+        {
+            auto MakeIndirectIncDecInstruction = [](ALUOp op, WideRegisterOperand dest) -> Instruction
+            {
+                return MakeInstruction({
+                    MakeCycle(NoALU(), NoIDU(), MakeMemRead(dest, RegisterOperand::TempRegZ)),
+                    MakeCycle(MakeALU(op, RegisterOperand::TempRegZ, RegisterOperand::TempRegZ), NoIDU(), MakeMemWrite(RegisterOperand::TempRegZ, dest)),
+                    MakeCycle(NoALU(), NoIDU(), NoMem())
+                });
+            };
+
+            INSTRUCTIONS[0x34] = MakeIndirectIncDecInstruction(ALUOp::Inc, WideRegisterOperand::RegHL);
+            INSTRUCTIONS[0x35] = MakeIndirectIncDecInstruction(ALUOp::Dec, WideRegisterOperand::RegHL);
+        }
+
+        void PopulateQuadrant00BitwiseInstructions()
+        {
+            auto MakeALUInstruction = [](ALUOp op, RegisterOperand operand) -> Instruction
+            {
+                return MakeInstruction({
+                    MakeCycle(MakeALU(op, operand, operand), NoIDU(), NoMem())
+                });
+            };
+
+            INSTRUCTIONS[0x07] = MakeALUInstruction(ALUOp::Rlc, RegisterOperand::RegA);
+            INSTRUCTIONS[0x17] = MakeALUInstruction(ALUOp::Rl, RegisterOperand::RegA);
+            INSTRUCTIONS[0x0F] = MakeALUInstruction(ALUOp::Rrc, RegisterOperand::RegA);
+            INSTRUCTIONS[0x1F] = MakeALUInstruction(ALUOp::Rr, RegisterOperand::RegA);
+        }
+
+        void PopulateQuadrant00MiscInstructions()
+        {
+            // STOP
+            INSTRUCTIONS[0x10] = MakeInstruction({
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_StopExecution))
+            });
+
+            // LD (HL), d8
+            INSTRUCTIONS[0x36] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), NoIDU(), MakeMemWrite(RegisterOperand::TempRegZ, WideRegisterOperand::RegHL)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // LD (a16), SP
+            INSTRUCTIONS[0x08] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegW)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegWZ), MakeMemWrite(RegisterOperand::RegSPL, WideRegisterOperand::RegWZ)),
+                MakeCycle(NoALU(), NoIDU(), MakeMemWrite(RegisterOperand::RegSPH, WideRegisterOperand::RegWZ)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // DAA
+            INSTRUCTIONS[0x27] = MakeInstruction({
+                MakeCycle(MakeALU(ALUOp::Da, RegisterOperand::RegA, RegisterOperand::RegA), NoIDU(), NoMem())
+            });
+
+            // SCF
+            INSTRUCTIONS[0x37] = MakeInstruction({
+                MakeCycle(MakeALU(ALUOp::Scf, RegisterOperand::RegA, RegisterOperand::RegA), NoIDU(), NoMem())
+            });
+
+            // CPL
+            INSTRUCTIONS[0x3F] = MakeInstruction({
+                MakeCycle(MakeALU(ALUOp::Cpl, RegisterOperand::RegA, RegisterOperand::RegA), NoIDU(), NoMem())
+            });
+
+            // CCF
+            INSTRUCTIONS[0x4F] = MakeInstruction({
+                MakeCycle(MakeALU(ALUOp::Ccf, RegisterOperand::RegA, RegisterOperand::RegA), NoIDU(), NoMem())
+            });
+        }
+
         void PopulateQuadrant01BasicLDInstructions()
         {
             // LD instructions: |01|yyy|zzz|
@@ -298,6 +446,14 @@ namespace emu::SM83
             INSTRUCTIONS[0x74] = MakeIndStoreLDInstruction(RegisterOperand::RegH);
             INSTRUCTIONS[0x75] = MakeIndStoreLDInstruction(RegisterOperand::RegL);
             INSTRUCTIONS[0x77] = MakeIndStoreLDInstruction(RegisterOperand::RegA);
+        }
+
+        void PopulateQuadrant01MiscInstructions()
+        {
+            // HALT
+            INSTRUCTIONS[0x76] = MakeInstruction({
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_HaltExecution))
+            });
         }
 
         void PopulateQuadrant10BasicALUInstructions()
@@ -359,6 +515,38 @@ namespace emu::SM83
             INSTRUCTIONS[0xFE] = MakeImmALUInstruction(ALUOp::Cp);
         }
 
+        void PopulateQuadrant11PushPopInstructions()
+        {
+            auto MakePushInstruction = [](WideRegisterOperand operand) -> Instruction
+            {
+                return MakeInstruction({
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, WideRegisterOperand::RegSP), NoMem()),
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, WideRegisterOperand::RegSP), MakeMemWrite(WideRegisterMSB(operand), WideRegisterOperand::RegSP)),
+                    MakeCycle(NoALU(), NoIDU(), MakeMemWrite(WideRegisterLSB(operand), WideRegisterOperand::RegSP)),
+                    MakeCycle(NoALU(), NoIDU(), NoMem())
+                });
+            };
+
+            auto MakePopInstruction = [](WideRegisterOperand operand) -> Instruction
+            {
+                return MakeInstruction({
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegSP), MakeMemRead(WideRegisterOperand::RegSP, RegisterOperand::TempRegZ)),
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegSP), MakeMemRead(WideRegisterOperand::RegSP, RegisterOperand::TempRegW)),
+                    MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, operand))
+                });
+            };
+
+            INSTRUCTIONS[0xC1] = MakePopInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0xD1] = MakePopInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0xE1] = MakePopInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0xF1] = MakePopInstruction(WideRegisterOperand::RegAF);
+
+            INSTRUCTIONS[0xC5] = MakePushInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0xD5] = MakePushInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0xE5] = MakePushInstruction(WideRegisterOperand::RegBC);
+            INSTRUCTIONS[0xF5] = MakePushInstruction(WideRegisterOperand::RegAF);
+        }
+
         void PopulateInstructions()
         {
             // NOP
@@ -370,12 +558,23 @@ namespace emu::SM83
             PopulateQuadrant00ImmediateLDInstructions();
             PopulateQuadrant0016BitIncDecInstructions();
             PopulateQuadrant0016BitImmediateLDInstructions();
+            PopulateQuadrant0016BitALUInstructions();
+            PopulateQuadrant00IndirectStoreLDInstructions();
+            PopulateQuadrant00IndirectLDInstructions();
+            PopulateQuadrant00IndirectIncDecInstructions();
+            PopulateQuadrant00BitwiseInstructions();
+            PopulateQuadrant00MiscInstructions();
+
             PopulateQuadrant01BasicLDInstructions();
             PopulateQuadrant01IndirectLDInstructions();
             PopulateQuadrant01IndirectStoreLDInstructions();
+            PopulateQuadrant01MiscInstructions();
+
             PopulateQuadrant10BasicALUInstructions();
             PopulateQuadrant10IndirectALUInstructions();
+
             PopulateQuadrant11ImmALUInstructions();
+            PopulateQuadrant11PushPopInstructions();
         }
 
         struct OpCodeStaticInit

@@ -19,7 +19,7 @@ namespace emu::SM83
             struct
             {
                 uint16_t BC, DE, HL;    // General purpose
-                uint16_t FA;            // Flags and accumulator
+                uint16_t AF;            // Flags and accumulator
                 uint16_t SP, PC;        // Stack pointer and program counter
 
                 uint16_t TempZW;        // Temporary internal registers
@@ -73,6 +73,17 @@ namespace emu::SM83
         Inc,
         Dec,
 
+        Rl,
+        Rlc,
+        Rr,
+        Rrc,
+
+        Da,
+        Scf,
+        Ccf,
+        Cpl,
+
+
         Nop
     };
 
@@ -112,7 +123,7 @@ namespace emu::SM83
         RegBC = 0,
         RegDE,
         RegHL,
-        RegFA,  // Not legal to use
+        RegAF,
         RegSP,
         RegPC,
         RegWZ,
@@ -155,7 +166,9 @@ namespace emu::SM83
             enum Flags : uint8_t
             {
                 MF_None = 0x0,
-                MF_WriteWZToWideRegister = 0x01
+                MF_WriteWZToWideRegister = 0x01,
+                MF_StopExecution = 0x02,
+                MF_HaltExecution = 0x04,
             };
 
             uint8_t _flags;
@@ -186,6 +199,8 @@ namespace emu::SM83
         {
             DF_None = 0x0,
             DF_CurrentCycleIsFetchCycle = 0x01,
+            DF_ExecutionStopped = 0x02,         // Not sure if this is the right place for this
+            DF_ExecutionHalted = 0x04,
         };
 
         uint8_t _flags;

@@ -89,19 +89,6 @@ namespace emu::SM83
                     {
                         regs._reg8Arr[uint8_t(mCycle._memOp._readDestOrWriteSrc)] = io._data;
                     }
-                    
-                    // If memory write was requested notify memory controller
-                    else if (mCycle._memOp._type == MCycle::MemOp::Type::Write)
-                    {
-                        io._outPins.WR = 1;
-                    }
-                }
-                    break;
-
-                case T3_0:
-                {
-                    // Clear M1 pin
-                    io._outPins.M1 = 0; 
 
                     // Handle ALU operation 
                     if (mCycle._alu._operandA != RegisterOperand::None && 
@@ -118,7 +105,28 @@ namespace emu::SM83
                         
                         aluOperandA = aluResult._result;
                         regs._reg8.F = aluResult._flags;
+
+                        // Sort of a hack? If our destination operand is a temporary register, put ALU result on data bus
+                        if (mCycle._alu._operandA == RegisterOperand::TempRegZ ||
+                            mCycle._alu._operandA == RegisterOperand::TempRegW)
+                        {
+                            io._data = aluResult._result;
+                        }
                     }
+
+                    
+                    // If memory write was requested notify memory controller
+                    else if (mCycle._memOp._type == MCycle::MemOp::Type::Write)
+                    {
+                        io._outPins.WR = 1;
+                    }
+                }
+                    break;
+
+                case T3_0:
+                {
+                    // Clear M1 pin
+                    io._outPins.M1 = 0; 
 
                     // Handle Misc operations
                     if (mCycle._misc._flags & MCycle::Misc::MF_WriteWZToWideRegister)
@@ -139,6 +147,16 @@ namespace emu::SM83
                     break;
                 case T4_1:
                 {
+                    if (mCycle._misc._flags & MCycle::Misc::MF_StopExecution)
+                    {
+                        decoder._flags |= Decoder::DF_ExecutionStopped;
+                    }
+
+                    if (mCycle._misc._flags & MCycle::Misc::MF_HaltExecution)
+                    {
+                        decoder._flags |= Decoder::DF_ExecutionHalted;
+                    }
+
                     // Next MCycle
                     if (decoder._flags & Decoder::DF_CurrentCycleIsFetchCycle)
                     {
@@ -196,11 +214,21 @@ namespace emu::SM83
 
     void Tick(CPU* cpu, MemoryController& memCtrl, uint32_t cycles)
     {
+        if (cpu->_decoder._flags & Decoder::DF_ExecutionStopped)
+        {
+            return;
+        }
+
         // Note: Overlapping execution! Last M-cycle of an instruction always overlaps with the fetch cycle for the next instruction
         // Documentation saying an instruction is only 1 cycle only indicates the "effective" cycles spent without overlap
         // The "execution" M-cycles (i.e. not M1) can overlap with the fetch of the next opcode
         for (uint32_t i = 0; i < cycles; ++i)
         {
+            if (cpu->_decoder._flags & Decoder::DF_ExecutionHalted)
+            {
+                continue;
+            }
+
             // Two half ticks!
             ProcessCurrentMCycle(cpu->_io, cpu->_registers, cpu->_decoder);
             ProcessCurrentMCycle(cpu->_io, cpu->_registers, cpu->_decoder);
