@@ -6,7 +6,7 @@ namespace emu::SM83
 {
     namespace
     {
-        constexpr const uint32_t MAX_MCYCLE_COUNT = 4;
+        constexpr const uint32_t MAX_MCYCLE_COUNT = 6;
         struct Instruction
         {
             uint32_t _cycleCount;
@@ -258,8 +258,8 @@ namespace emu::SM83
             auto Make16BitAddInstruction = [](WideRegisterOperand operandA, WideRegisterOperand operandB) -> Instruction
             {
                 return MakeInstruction({
-                    MakeCycle(MakeALU(ALUOp::Add, WideRegisterLSB(operandA), WideRegisterLSB(operandB)), NoIDU(), NoMem()),
-                    MakeCycle(MakeALU(ALUOp::Adc, WideRegisterMSB(operandA), WideRegisterMSB(operandB)), NoIDU(), NoMem())
+                    MakeCycle(MakeALU(ALUOp::AddKeepZ, WideRegisterLSB(operandA), WideRegisterLSB(operandB)), NoIDU(), NoMem()),
+                    MakeCycle(MakeALU(ALUOp::AdcKeepZ, WideRegisterMSB(operandA), WideRegisterMSB(operandB)), NoIDU(), NoMem())
                 });
             };
 
@@ -290,7 +290,7 @@ namespace emu::SM83
             INSTRUCTIONS[0x02] = MakeIndStoreLDInstruction(RegisterOperand::RegA, WideRegisterOperand::RegBC);
             INSTRUCTIONS[0x12] = MakeIndStoreLDInstruction(RegisterOperand::RegA, WideRegisterOperand::RegDE);
             INSTRUCTIONS[0x22] = MakeIndStoreLDInstructionWithIncDec(RegisterOperand::RegA, WideRegisterOperand::RegHL, IDUOp::Inc);
-            INSTRUCTIONS[0x22] = MakeIndStoreLDInstructionWithIncDec(RegisterOperand::RegA, WideRegisterOperand::RegHL, IDUOp::Dec);
+            INSTRUCTIONS[0x32] = MakeIndStoreLDInstructionWithIncDec(RegisterOperand::RegA, WideRegisterOperand::RegHL, IDUOp::Dec);
         }
 
         void PopulateQuadrant00IndirectLDInstructions()
@@ -313,8 +313,8 @@ namespace emu::SM83
 
             INSTRUCTIONS[0x0A] = MakeIndirectLDInstruction(WideRegisterOperand::RegBC, RegisterOperand::RegA);
             INSTRUCTIONS[0x1A] = MakeIndirectLDInstruction(WideRegisterOperand::RegDE, RegisterOperand::RegA);
-            INSTRUCTIONS[0x2A] = MakeIndirectLDInstructionWithIncDec(WideRegisterOperand::RegBC, RegisterOperand::RegA, IDUOp::Inc);
-            INSTRUCTIONS[0x3A] = MakeIndirectLDInstructionWithIncDec(WideRegisterOperand::RegBC, RegisterOperand::RegA, IDUOp::Dec);
+            INSTRUCTIONS[0x2A] = MakeIndirectLDInstructionWithIncDec(WideRegisterOperand::RegHL, RegisterOperand::RegA, IDUOp::Inc);
+            INSTRUCTIONS[0x3A] = MakeIndirectLDInstructionWithIncDec(WideRegisterOperand::RegHL, RegisterOperand::RegA, IDUOp::Dec);
         }
 
         void PopulateQuadrant00IndirectIncDecInstructions()
@@ -381,12 +381,12 @@ namespace emu::SM83
             });
 
             // CPL
-            INSTRUCTIONS[0x3F] = MakeInstruction({
+            INSTRUCTIONS[0x2F] = MakeInstruction({
                 MakeCycle(MakeALU(ALUOp::Cpl, RegisterOperand::RegA, RegisterOperand::RegA), NoIDU(), NoMem())
             });
 
             // CCF
-            INSTRUCTIONS[0x4F] = MakeInstruction({
+            INSTRUCTIONS[0x3F] = MakeInstruction({
                 MakeCycle(MakeALU(ALUOp::Ccf, RegisterOperand::RegA, RegisterOperand::RegA), NoIDU(), NoMem())
             });
         }

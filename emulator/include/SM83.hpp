@@ -83,6 +83,9 @@ namespace emu::SM83
         Ccf,
         Cpl,
 
+        AddKeepZ,
+        AdcKeepZ,
+
 
         Nop
     };
@@ -198,18 +201,18 @@ namespace emu::SM83
         enum Flags
         {
             DF_None = 0x0,
-            DF_CurrentCycleIsFetchCycle = 0x01,
-            DF_ExecutionStopped = 0x02,         // Not sure if this is the right place for this
-            DF_ExecutionHalted = 0x04,
+            DF_ExecutionStopped = 0x01,         // Not sure if this is the right place for this
+            DF_ExecutionHalted = 0x02,
         };
 
         uint8_t _flags;
-        MCycle _currMCycle;
-        uint8_t _mCycleIndex;
+        uint8_t _nextMCycleIndex;
         TCycleState _tCycleState;
 
         uint8_t IR;
         uint8_t _temp;
+
+        MCycle _currMCycle;
     };
 
     struct CPU

@@ -1,1 +1,15 @@
-{}
+{
+    "configurations": [
+    {
+        "name": "Run Tests - Debug",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/win64/Debug/emulatorTests.exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "console": "integratedTerminal"
+    }
+    ]
+}

@@ -15,6 +15,7 @@ project "emulatorTests"
     includedirs {
         "../emulator/include",
         "../contrib/submodules/googletest/googletest/include",
+        "../contrib/submodules/json/include"
     }
 
     libdirs {

@@ -21,30 +21,34 @@ namespace emu::SM83
             Registers& regs,
             Decoder& decoder)
         {
-            MCycle& mCycle = decoder._currMCycle;
-
             switch (decoder._tCycleState)
             {
                 case T1_0:
                 {
+                    decoder._currMCycle = GetMCycle(regs._reg8.IR, decoder._nextMCycleIndex);
+
                     // Set M1 pin if we're in a fetch cycle and overlap MCycle with fetch cycle if required
-                    if (decoder._flags & Decoder::DF_CurrentCycleIsFetchCycle)
+                    if (decoder._nextMCycleIndex == GetMCycleCount(regs._reg8.IR) - 1)
                     {
                         const MCycle& fetchCyle = GetFetchMCycle();
 
-                        EMU_ASSERT(mCycle._idu._op == IDUOp::Nop);
-                        EMU_ASSERT(mCycle._memOp._type == MCycle::MemOp::Type::None);
+                        EMU_ASSERT(decoder._currMCycle._idu._op == IDUOp::Nop);
+                        EMU_ASSERT(decoder._currMCycle._memOp._type == MCycle::MemOp::Type::None);
 
-                        mCycle._idu = fetchCyle._idu;
-                        mCycle._memOp = fetchCyle._memOp;
-
+                        decoder._currMCycle._idu = fetchCyle._idu;
+                        decoder._currMCycle._memOp = fetchCyle._memOp;
                         io._outPins.M1 = 1;
+                        decoder._nextMCycleIndex = 0;
+                    }
+                    else
+                    {
+                        decoder._nextMCycleIndex++;
                     }
 
                     // Pull address for memory operation (if any) onto address bus
-                    if (mCycle._memOp._type != MCycle::MemOp::Type::None)
+                    if (decoder._currMCycle._memOp._type != MCycle::MemOp::Type::None)
                     {
-                        io._address = regs._reg16Arr[uint8_t(mCycle._memOp._readSrcOrWriteDest)];
+                        io._address = regs._reg16Arr[uint8_t(decoder._currMCycle._memOp._readSrcOrWriteDest)];
                     }
                 }
                     break;
@@ -52,24 +56,24 @@ namespace emu::SM83
                 case T1_1:
                 {
                     // Set MRQ and read or write pin based on the memory operation type
-                    if (mCycle._memOp._type == MCycle::MemOp::Type::Read)
+                    if (decoder._currMCycle._memOp._type == MCycle::MemOp::Type::Read)
                     {
                         io._outPins.MRQ = 1;
                         io._outPins.RD = 1;
                     }
 
                     // Set value of memory write operation onto data bus
-                    else if (mCycle._memOp._type == MCycle::MemOp::Type::Write)
+                    else if (decoder._currMCycle._memOp._type == MCycle::MemOp::Type::Write)
                     {
                         io._outPins.MRQ = 1;
-                        io._data = regs._reg8Arr[uint8_t(mCycle._memOp._readDestOrWriteSrc)];
+                        io._data = regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._readDestOrWriteSrc)];
                     }
                     
                     // Handle IDU operation
-                    if (mCycle._idu._op != IDUOp::Nop)
+                    if (decoder._currMCycle._idu._op != IDUOp::Nop)
                     {
-                        uint16_t& iduOperand = regs._reg16Arr[uint8_t(mCycle._idu._operand)];
-                        IDUOutput iduResult = ProcessIDUOp(mCycle._idu._op, iduOperand);
+                        uint16_t& iduOperand = regs._reg16Arr[uint8_t(decoder._currMCycle._idu._operand)];
+                        IDUOutput iduResult = ProcessIDUOp(decoder._currMCycle._idu._op, iduOperand);
                         iduOperand = iduResult._result;
                     }
                 }
@@ -85,20 +89,20 @@ namespace emu::SM83
                 {
                     // If memory was requested it is now on the data bus. Put it in destination register
                     // This handles setting the instruction register in a fetch cycle!!
-                    if (mCycle._memOp._type == MCycle::MemOp::Type::Read)
+                    if (decoder._currMCycle._memOp._type == MCycle::MemOp::Type::Read)
                     {
-                        regs._reg8Arr[uint8_t(mCycle._memOp._readDestOrWriteSrc)] = io._data;
+                        regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._readDestOrWriteSrc)] = io._data;
                     }
 
                     // Handle ALU operation 
-                    if (mCycle._alu._operandA != RegisterOperand::None && 
-                        mCycle._alu._operandB != RegisterOperand::None)
+                    if (decoder._currMCycle._alu._operandA != RegisterOperand::None && 
+                        decoder._currMCycle._alu._operandB != RegisterOperand::None)
                     {
-                        uint8_t& aluOperandA = regs._reg8Arr[uint8_t(mCycle._alu._operandA)];
-                        uint8_t aluOperandB = regs._reg8Arr[uint8_t(mCycle._alu._operandB)];
+                        uint8_t& aluOperandA = regs._reg8Arr[uint8_t(decoder._currMCycle._alu._operandA)];
+                        uint8_t aluOperandB = regs._reg8Arr[uint8_t(decoder._currMCycle._alu._operandB)];
 
                         ALUOutput aluResult = ProcessALUOp(
-                            mCycle._alu._op,
+                            decoder._currMCycle._alu._op,
                             regs._reg8.F,
                             aluOperandA,
                             aluOperandB);
@@ -107,8 +111,8 @@ namespace emu::SM83
                         regs._reg8.F = aluResult._flags;
 
                         // Sort of a hack? If our destination operand is a temporary register, put ALU result on data bus
-                        if (mCycle._alu._operandA == RegisterOperand::TempRegZ ||
-                            mCycle._alu._operandA == RegisterOperand::TempRegW)
+                        if (decoder._currMCycle._alu._operandA == RegisterOperand::TempRegZ ||
+                            decoder._currMCycle._alu._operandA == RegisterOperand::TempRegW)
                         {
                             io._data = aluResult._result;
                         }
@@ -116,7 +120,7 @@ namespace emu::SM83
 
                     
                     // If memory write was requested notify memory controller
-                    else if (mCycle._memOp._type == MCycle::MemOp::Type::Write)
+                    if (decoder._currMCycle._memOp._type == MCycle::MemOp::Type::Write)
                     {
                         io._outPins.WR = 1;
                     }
@@ -129,9 +133,9 @@ namespace emu::SM83
                     io._outPins.M1 = 0; 
 
                     // Handle Misc operations
-                    if (mCycle._misc._flags & MCycle::Misc::MF_WriteWZToWideRegister)
+                    if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_WriteWZToWideRegister)
                     {
-                        regs._reg16Arr[uint8_t(mCycle._misc._wideOperand)] = regs._reg16Arr[uint8_t(WideRegisterOperand::RegWZ)];
+                        regs._reg16Arr[uint8_t(decoder._currMCycle._misc._wideOperand)] = regs._reg16Arr[uint8_t(WideRegisterOperand::RegWZ)];
                     }
                 }
                     break;
@@ -147,35 +151,15 @@ namespace emu::SM83
                     break;
                 case T4_1:
                 {
-                    if (mCycle._misc._flags & MCycle::Misc::MF_StopExecution)
+                    if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_StopExecution)
                     {
                         decoder._flags |= Decoder::DF_ExecutionStopped;
                     }
 
-                    if (mCycle._misc._flags & MCycle::Misc::MF_HaltExecution)
+                    if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_HaltExecution)
                     {
                         decoder._flags |= Decoder::DF_ExecutionHalted;
                     }
-
-                    // Next MCycle
-                    if (decoder._flags & Decoder::DF_CurrentCycleIsFetchCycle)
-                    {
-                        decoder._mCycleIndex = 0;
-                    }
-                    else
-                    {
-                        decoder._mCycleIndex++;
-                    }
-                    
-                    decoder._flags &= ~Decoder::DF_CurrentCycleIsFetchCycle;
-                    
-                    // Last MCycle of an instruction overlaps with a new fetch cycle
-                    if (decoder._mCycleIndex == GetMCycleCount(regs._reg8.IR) - 1)
-                    {
-                        decoder._flags |= Decoder::DF_CurrentCycleIsFetchCycle;
-                    }
-                    
-                    mCycle = GetMCycle(regs._reg8.IR, decoder._mCycleIndex);
                 }
                     break;
 
@@ -206,10 +190,9 @@ namespace emu::SM83
         cpu->_io._outPins.WR = 0;
 
         // Set up decoder state
-        cpu->_decoder._currMCycle = GetMCycle(0, 0);
-        cpu->_decoder._flags = Decoder::DF_CurrentCycleIsFetchCycle;
-        cpu->_decoder._mCycleIndex = 0;
+        cpu->_decoder._nextMCycleIndex = 0;
         cpu->_decoder._tCycleState = T1_0;
+        cpu->_decoder._flags = 0;
     }
 
     void Tick(CPU* cpu, MemoryController& memCtrl, uint32_t cycles)

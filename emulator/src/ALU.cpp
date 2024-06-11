@@ -7,25 +7,51 @@ namespace emu::SM83
     {
         bool HasCarry(uint16_t wideResult)
         {
-            return wideResult & (1 << 8);
+            //return wideResult & (1 << 8);
+            return wideResult > 0xFF;
         }
 
         bool HasHalfCarry(uint8_t operandA, 
             uint8_t operandB)
         {
+            return ((operandA & 0xF) + (operandB & 0xF)) & 0x10;
+        }
+
+        bool HasHalfCarry(uint8_t operandA, 
+            uint8_t operandB,
+            uint8_t carryVal)
+        {
+            return (((operandA & 0xF) + (operandB & 0xF)) + carryVal) & 0x10;
+        }
+
+        bool HasHalfBorrow(uint8_t operandA, 
+            uint8_t operandB)
+        {
             return ((operandA & 0xF) - (operandB & 0xF)) & 0x10;
         }
 
-        bool SetFlags(bool C, bool H, bool N, bool nonZero)
+        bool HasHalfBorrow(uint8_t operandA, 
+            uint8_t operandB,
+            uint8_t carryVal)
         {
-            uint8_t flags = 0;
-            flags |= C ? SF_Carry : 0;
-            flags |= H ? SF_HalfCarry : 0;
-            flags |= N ? SF_Subtract : 0;
-            flags |= nonZero ? 0 : SF_Zero;
-
-            return flags;
+            return (((operandA & 0xF) - (operandB & 0xF)) - carryVal) & 0x10;
         }
+
+        struct FlagHelper
+        {
+            union
+            {
+                uint8_t _u8;
+                struct
+                {
+                    uint8_t _unused : 4;
+                    uint8_t _C : 1;
+                    uint8_t _H : 1;
+                    uint8_t _N : 1;
+                    uint8_t _Z : 1;
+                } _bits;
+            };
+        };
     }
 
     ALUOutput ProcessALUOp(
@@ -34,7 +60,7 @@ namespace emu::SM83
         uint8_t operandA, 
         uint8_t operandB)
     {
-        uint8_t flagsOut = flagsIn;
+        FlagHelper flagsOut = { ._u8 = flagsIn };
 
         uint16_t resultWide = 0; // Easier handling of carry bit
         uint16_t operandAWide = operandA;
@@ -45,169 +71,237 @@ namespace emu::SM83
         {
         case ALUOp::Add:
             resultWide = operandAWide + operandBWide;
-            flagsOut = SetFlags(
-                HasCarry(resultWide), 
-                HasHalfCarry(operandA, operandB), 
-                false, 
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = HasCarry(resultWide),
+                ._H = HasHalfCarry(operandA, operandB),
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::Adc:
             resultWide = operandAWide + operandBWide + carryValue;
-            flagsOut = SetFlags(
-                HasCarry(resultWide), 
-                HasHalfCarry(operandA, operandB), 
-                false, 
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = HasCarry(resultWide),
+                ._H = HasHalfCarry(operandA, operandB, carryValue),
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::Sub:
             resultWide = operandAWide - operandBWide;
-            flagsOut = SetFlags(
-                HasCarry(resultWide), 
-                HasHalfCarry(operandA, operandB), 
-                true, 
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = HasCarry(resultWide),
+                ._H = HasHalfBorrow(operandA, operandB),
+                ._N = 1,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::Sbc:
             resultWide = operandAWide - operandBWide - carryValue;
-            flagsOut = SetFlags(
-                HasCarry(resultWide), 
-                HasHalfCarry(operandA, operandB), 
-                true, 
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = HasCarry(resultWide),
+                ._H = HasHalfBorrow(operandA, operandB, carryValue),
+                ._N = 1,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::And:
             resultWide = operandAWide & operandBWide;
-            flagsOut = SetFlags(
-                false, 
-                true, 
-                false, 
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = 0,
+                ._H = 1,
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::Xor:
             resultWide = operandAWide ^ operandBWide;
-            flagsOut = SetFlags(
-                false,
-                false,
-                false,
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = 0,
+                ._H = 0,
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::Or:
             resultWide = operandAWide | operandBWide;
-            flagsOut = SetFlags(
-                false,
-                false,
-                false,
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = 0,
+                ._H = 0,
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::Cp:
             resultWide = operandAWide - operandBWide;
-            flagsOut = SetFlags(
-                !HasCarry(resultWide),
-                !HasHalfCarry(operandA, operandB),
-                true,
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = HasCarry(resultWide),
+                ._H = HasHalfBorrow(operandA, operandB),
+                ._N = 1,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
+
+            resultWide = operandAWide;
             break;
         case ALUOp::Inc:
             resultWide = operandBWide + 1;
-            flagsOut = SetFlags(
-                (flagsIn & SF_Carry) > 0,
-                HasHalfCarry(1, operandB),
-                false,
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = flagsOut._bits._C,
+                ._H = HasHalfCarry(operandA, 1),
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::Dec:
             resultWide = operandBWide - 1;
-            flagsOut = SetFlags(
-                (flagsIn & SF_Carry) > 0,
-                HasHalfCarry(1, operandB),
-                true,
-                resultWide);
+            flagsOut._bits =
+            {
+                ._C = flagsOut._bits._C,
+                ._H = HasHalfBorrow(operandB, 1),
+                ._N = 1,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
             break;
         case ALUOp::Rl:
-            resultWide = operandBWide << 1;
-            flagsOut = SetFlags(
-                HasCarry(resultWide),
-                false,
-                false,
-                true);
+            resultWide = (operandBWide << 1) + flagsOut._bits._C;
+            flagsOut._bits =
+            {
+                ._C = uint8_t(operandBWide & 0x80) ? uint8_t(1) : uint8_t(0),
+                ._H = 0,
+                ._N = 0,
+                ._Z = 0,
+            };
             break;
         case ALUOp::Rlc:
         {
             resultWide = operandBWide << 1;
             uint16_t rotateCarry = (resultWide & 0x100) ? 1 : 0;
             resultWide = (resultWide & 0xFFFE) + rotateCarry;
-            flagsOut = SetFlags(
-                HasCarry(resultWide),
-                false,
-                false,
-                true);
+            flagsOut._bits =
+            {
+                ._C = HasCarry(resultWide),
+                ._H = 0,
+                ._N = 0,
+                ._Z = 0,
+            };
         }
             break;
         case ALUOp::Rr:
-            resultWide = operandBWide >> 1;
-            flagsOut = SetFlags(
-                HasCarry(resultWide),
-                false,
-                false,
-                true);
+            resultWide = (operandBWide >> 1) + (flagsOut._bits._C << 7); 
+            flagsOut._bits =
+            {
+                ._C = uint8_t(operandBWide & 0x01),
+                ._H = 0,
+                ._N = 0,
+                ._Z = 0,
+            };
             break;
         case ALUOp::Rrc:
         {
             uint16_t rotateCarry = (operandBWide & 0x01) << 7;
             resultWide = operandBWide >> 1;
             resultWide = (resultWide & 0xFF7F) | rotateCarry;
-            flagsOut = SetFlags(
-                HasCarry(resultWide),
-                false,
-                false,
-                true);
+            flagsOut._bits =
+            {
+                ._C = uint8_t(operandBWide & 0x01),
+                ._H = 0,
+                ._N = 0,
+                ._Z = 0,
+            };
         }
             break;        
         case ALUOp::Da:
-
+        {
             // Decimal adjust. See http://z80-heaven.wikidot.com/instructions-set:daa
             resultWide = operandBWide;
-            if ((flagsIn & SF_HalfCarry) || (resultWide & 0x0F) > 0x09)
+
+            bool setCarry = false;
+            uint8_t adjust = 0;
+            if (flagsOut._bits._H || (!flagsOut._bits._N && (resultWide & 0xF) > 0x9))
             {
-                resultWide += 0x06;
+                adjust |= 0x06;
             }
 
-            if (((resultWide & 0xF0) >> 4) > 0x09)
+            if (flagsOut._bits._C || (!flagsOut._bits._N && resultWide > 0x99))
             {
-                resultWide += 0x60;
+                adjust |= 0x60;
+                setCarry = true;
             }
 
-            flagsOut = SetFlags(
-                HasCarry(resultWide),
-                false,
-                flagsIn & SF_Subtract,
-                resultWide);
+            resultWide = flagsOut._bits._N ? resultWide - adjust : resultWide + adjust;
+
+            flagsOut._bits =
+            {
+                ._C = setCarry,
+                ._H = 0,
+                ._N = flagsOut._bits._N,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
+        }
             break;
         case ALUOp::Scf:
-            flagsOut = SetFlags(
-                true,
-                false,
-                false,
-                !(flagsIn & SF_Zero));
+            resultWide = operandBWide;
+            flagsOut._bits =
+            {
+                ._C = 1,
+                ._H = 0,
+                ._N = 0,
+                ._Z = flagsOut._bits._Z,
+            };
             break;
         case ALUOp::Ccf:
-            flagsOut = SetFlags(
-                !(flagsIn & SF_Carry),
-                false,
-                false,
-                !(flagsIn & SF_Zero));
+            resultWide = operandBWide;
+            flagsOut._bits =
+            {
+                ._C = flagsOut._bits._C ? uint8_t(0) : uint8_t(1),
+                ._H = 0,
+                ._N = 0,
+                ._Z = flagsOut._bits._Z,
+            };
             break;
         case ALUOp::Cpl:
             resultWide = ~operandBWide;
-            flagsOut = SetFlags(
-                flagsIn & SF_Carry,
-                true,
-                true,
-                !(flagsIn & SF_Zero));
+            flagsOut._bits =
+            {
+                ._C = flagsOut._bits._C,
+                ._H = 1,
+                ._N = 1,
+                ._Z = flagsOut._bits._Z,
+            };
             break;
         case ALUOp::Nop:
             resultWide = operandBWide;
             break; 
+
+        case ALUOp::AddKeepZ:
+            resultWide = operandAWide + operandBWide;
+            flagsOut._bits =
+            {
+                ._C = HasCarry(resultWide),
+                ._H = HasHalfCarry(operandA, operandB),
+                ._N = 0,
+                ._Z = flagsOut._bits._Z,
+            };
+            break;
+        case ALUOp::AdcKeepZ:
+            resultWide = operandAWide + operandBWide + carryValue;
+            flagsOut._bits =
+            {
+                ._C = HasCarry(resultWide),
+                ._H = HasHalfCarry(operandA, operandB, carryValue),
+                ._N = 0,
+                ._Z = flagsOut._bits._Z,
+            };
+            break;
         default:
             break;
         }
@@ -215,7 +309,7 @@ namespace emu::SM83
         return 
         {
             ._result = uint8_t(resultWide & 0xFF),
-            ._flags = flagsOut
+            ._flags = flagsOut._u8
         };
     }
 
