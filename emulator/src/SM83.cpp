@@ -77,11 +77,12 @@ namespace emu::SM83
                     }
                     
                     // Handle IDU operation
-                    if (decoder._currMCycle._idu._op != IDUOp::Nop)
+                    if (decoder._currMCycle._idu._operand != WideRegisterOperand::None &&
+                        decoder._currMCycle._idu._dest != WideRegisterOperand::None)
                     {
-                        uint16_t& iduOperand = regs._reg16Arr[uint8_t(decoder._currMCycle._idu._operand)];
+                        uint16_t iduOperand = regs._reg16Arr[uint8_t(decoder._currMCycle._idu._operand)];
                         IDUOutput iduResult = ProcessIDUOp(decoder._currMCycle._idu._op, iduOperand);
-                        iduOperand = iduResult._result;
+                        regs._reg16Arr[uint8_t(decoder._currMCycle._idu._dest)] = iduResult._result;
                     }
                 }
                     break;

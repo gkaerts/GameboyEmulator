@@ -150,6 +150,7 @@ namespace emu::SM83
         {
             IDUOp _op;
             WideRegisterOperand _operand;
+            WideRegisterOperand _dest;
         };
 
         struct MemOp

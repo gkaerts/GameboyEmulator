@@ -342,6 +342,9 @@ namespace emu::SM83
         case IDUOp::Dec:
             result = operand - 1;
             break;
+        case IDUOp::Nop:
+            result = operand;
+            break;
         default:
             break;
         }

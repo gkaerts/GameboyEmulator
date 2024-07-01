@@ -91,7 +91,20 @@ namespace emu::SM83
         {
             return {
                 ._op = op,
-                ._operand = operand
+                ._operand = operand,
+                ._dest = operand
+            };
+        }
+
+        MCycle::IDU MakeIDUExt(
+            IDUOp op,
+            WideRegisterOperand operand,
+            WideRegisterOperand dest)
+        {
+            return {
+                ._op = op,
+                ._operand = operand,
+                ._dest = dest
             };
         }
 
@@ -631,6 +644,13 @@ namespace emu::SM83
                 MakeCycle(MakeALUExt(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegSPL, RegisterOperand::RegL), NoIDU(), NoMem()),
                 MakeCycle(MakeALU(ALUOp::Adjust, RegisterOperand::RegH, RegisterOperand::RegSPH), NoIDU(), NoMem()),
             });
+
+            // LD SP, HL
+            INSTRUCTIONS[0xF9] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDUExt(IDUOp::Nop, WideRegisterOperand::RegHL, WideRegisterOperand::RegSP), NoMem()),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
         }
 
         void PopulateInstructions()
