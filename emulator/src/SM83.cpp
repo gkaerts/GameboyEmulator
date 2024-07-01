@@ -32,11 +32,19 @@ namespace emu::SM83
                     {
                         const MCycle& fetchCyle = GetFetchMCycle();
 
-                        EMU_ASSERT(decoder._currMCycle._idu._op == IDUOp::Nop);
-                        EMU_ASSERT((decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active) == 0);
+                        // Allow fetch cycle IDU op to be overwritten by instruction IDU op
+                        if (decoder._currMCycle._idu._op == IDUOp::Nop &&
+                            decoder._currMCycle._idu._operand == WideRegisterOperand::None &&
+                            decoder._currMCycle._idu._dest == WideRegisterOperand::None)
+                        {
+                            decoder._currMCycle._idu = fetchCyle._idu;
+                        }
 
-                        decoder._currMCycle._idu = fetchCyle._idu;
-                        decoder._currMCycle._memOp = fetchCyle._memOp;
+                        // Same for memory op
+                        if ((decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active) == 0)
+                        {
+                            decoder._currMCycle._memOp = fetchCyle._memOp;
+                        }
                         io._outPins.M1 = 1;
                         decoder._nextMCycleIndex = 0;
                     }

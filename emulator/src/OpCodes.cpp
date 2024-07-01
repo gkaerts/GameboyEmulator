@@ -81,7 +81,8 @@ namespace emu::SM83
             return {
                 ._op = ALUOp::Nop,
                 ._operandA = RegisterOperand::None,
-                ._operandB = RegisterOperand::None
+                ._operandB = RegisterOperand::None,
+                ._dest = RegisterOperand::None
             };
         }
 
@@ -112,7 +113,8 @@ namespace emu::SM83
         {
             return {
                 ._op = IDUOp::Nop,
-                ._operand = WideRegisterOperand::None
+                ._operand = WideRegisterOperand::None,
+                ._dest = WideRegisterOperand::None
             };
         }
 
@@ -637,6 +639,11 @@ namespace emu::SM83
                 MakeCycle(MakeALU(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegSPL), NoIDU(), NoMem()),
                 MakeCycle(MakeALU(ALUOp::Adjust, RegisterOperand::TempRegW, RegisterOperand::RegSPH), NoIDU(), NoMem()),
                 MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, WideRegisterOperand::RegSP))
+            });
+
+            // JP HL (note the custom opcode fetch!)
+            INSTRUCTIONS[0xE9] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDUExt(IDUOp::Inc, WideRegisterOperand::RegHL, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegHL, RegisterOperand::RegIR))
             });
 
             // LD HL, SP+e
