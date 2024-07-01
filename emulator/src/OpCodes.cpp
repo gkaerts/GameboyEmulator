@@ -712,6 +712,14 @@ namespace emu::SM83
                 MakeCycle(NoALU(), NoIDU(), NoMem())
             });
 
+            // RETI
+            INSTRUCTIONS[0xD9] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegSP), MakeMemRead(WideRegisterOperand::RegSP, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegSP), MakeMemRead(WideRegisterOperand::RegSP, RegisterOperand::TempRegW)),
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister | MCycle::Misc::MF_EnableInterrupts, WideRegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
         }
 
         void PopulateInstructions()

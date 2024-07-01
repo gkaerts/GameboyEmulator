@@ -182,6 +182,8 @@ namespace emu::SM83
                 MF_StopExecution = 0x02,
                 MF_HaltExecution = 0x04,
                 MF_WriteValueToWideRegister = 0x08,
+                MF_EnableInterrupts = 0x10,
+                MF_DisableInterrupts = 0x20,
             };
 
             uint8_t _flags;

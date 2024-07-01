@@ -157,6 +157,15 @@ namespace emu::SM83
                     {
                         regs._reg16Arr[uint8_t(decoder._currMCycle._misc._wideOperand)] = decoder._currMCycle._misc._optValue;
                     }
+
+                    if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_EnableInterrupts)
+                    {
+                        regs._reg8.IE = 1;
+                    }
+                    else if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_DisableInterrupts)
+                    {
+                        regs._reg8.IE = 0;
+                    }
                 }
                     break;
                 case T3_1:
