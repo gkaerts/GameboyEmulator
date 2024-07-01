@@ -167,11 +167,12 @@ namespace emu::SM83
             };
         }
 
-        MCycle::Misc MakeMisc(uint8_t miscFlags, WideRegisterOperand operand = WideRegisterOperand::None)
+        MCycle::Misc MakeMisc(uint8_t miscFlags, WideRegisterOperand operand = WideRegisterOperand::None, uint8_t optValue = 0)
         {
             return {
                 ._flags = miscFlags,
-                ._wideOperand = operand
+                ._wideOperand = operand,
+                ._optValue = optValue
             };
         }
 
@@ -674,6 +675,26 @@ namespace emu::SM83
                 MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, WideRegisterOperand::RegPC)),
                 MakeCycle(NoALU(), NoIDU(), NoMem())
             });
+
+            auto MakeRSTInstructions = [](uint8_t valueToWrite) -> Instruction
+            {
+                return MakeInstruction({
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, WideRegisterOperand::RegSP), NoMem()),
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, WideRegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCH, WideRegisterOperand::RegSP)),
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Nop, WideRegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCL, WideRegisterOperand::RegSP), MakeMisc(MCycle::Misc::MF_WriteValueToWideRegister, WideRegisterOperand::RegPC, valueToWrite)),
+                    MakeCycle(NoALU(), NoIDU(), NoMem())
+                });
+            };
+
+            INSTRUCTIONS[0xC7] = MakeRSTInstructions(0x00);
+            INSTRUCTIONS[0xD7] = MakeRSTInstructions(0x10);
+            INSTRUCTIONS[0xE7] = MakeRSTInstructions(0x20);
+            INSTRUCTIONS[0xF7] = MakeRSTInstructions(0x30);
+
+            INSTRUCTIONS[0xCF] = MakeRSTInstructions(0x08);
+            INSTRUCTIONS[0xDF] = MakeRSTInstructions(0x18);
+            INSTRUCTIONS[0xEF] = MakeRSTInstructions(0x28);
+            INSTRUCTIONS[0xFF] = MakeRSTInstructions(0x38);
 
         }
 

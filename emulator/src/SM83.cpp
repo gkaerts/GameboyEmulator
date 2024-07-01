@@ -145,6 +145,10 @@ namespace emu::SM83
                     {
                         regs._reg16Arr[uint8_t(decoder._currMCycle._misc._wideOperand)] = regs._reg16Arr[uint8_t(WideRegisterOperand::RegWZ)];
                     }
+                    else if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_WriteValueToWideRegister)
+                    {
+                        regs._reg16Arr[uint8_t(decoder._currMCycle._misc._wideOperand)] = decoder._currMCycle._misc._optValue;
+                    }
                 }
                     break;
                 case T3_1:

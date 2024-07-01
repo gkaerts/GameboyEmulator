@@ -181,10 +181,12 @@ namespace emu::SM83
                 MF_WriteWZToWideRegister = 0x01,
                 MF_StopExecution = 0x02,
                 MF_HaltExecution = 0x04,
+                MF_WriteValueToWideRegister = 0x08,
             };
 
             uint8_t _flags;
             WideRegisterOperand _wideOperand;
+            uint8_t _optValue;
         };
 
         ALU _alu;
