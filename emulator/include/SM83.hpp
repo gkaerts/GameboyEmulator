@@ -143,6 +143,7 @@ namespace emu::SM83
             ALUOp _op;
             RegisterOperand _operandA;
             RegisterOperand _operandB;
+            RegisterOperand _dest;
         };
             
         struct IDU

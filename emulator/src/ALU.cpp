@@ -59,7 +59,7 @@ namespace emu::SM83
         uint8_t flagsIn, 
         uint8_t operandA, 
         uint8_t operandB,
-        uint8_t dataBus)
+        int opFlags)
     {
         FlagHelper flagsOut = { ._u8 = flagsIn };
 
@@ -305,7 +305,7 @@ namespace emu::SM83
             break;
         case ALUOp::Adjust:
         {
-            uint8_t adj = (dataBus & 0x80) ? 0xFF : 0;
+            uint8_t adj = (opFlags & PAOF_ZSignHigh) ? 0xFF : 0;
             resultWide = operandBWide + adj + flagsOut._bits._C;
 
             flagsOut._bits =

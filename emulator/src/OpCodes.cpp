@@ -57,7 +57,22 @@ namespace emu::SM83
             return {
                 ._op = op,
                 ._operandA = operandA,
-                ._operandB = operandB
+                ._operandB = operandB,
+                ._dest = operandA
+            };
+        }
+
+        MCycle::ALU MakeALUExt(
+            ALUOp op,
+            RegisterOperand operandA,
+            RegisterOperand operandB,
+            RegisterOperand dest)
+        {
+            return {
+                ._op = op,
+                ._operandA = operandA,
+                ._operandB = operandB,
+                ._dest = dest
             };
         }
 
@@ -608,6 +623,13 @@ namespace emu::SM83
                 MakeCycle(MakeALU(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegSPL), NoIDU(), NoMem()),
                 MakeCycle(MakeALU(ALUOp::Adjust, RegisterOperand::TempRegW, RegisterOperand::RegSPH), NoIDU(), NoMem()),
                 MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, WideRegisterOperand::RegSP))
+            });
+
+            // LD HL, SP+e
+            INSTRUCTIONS[0xF8] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(MakeALUExt(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegSPL, RegisterOperand::RegL), NoIDU(), NoMem()),
+                MakeCycle(MakeALU(ALUOp::Adjust, RegisterOperand::RegH, RegisterOperand::RegSPH), NoIDU(), NoMem()),
             });
         }
 

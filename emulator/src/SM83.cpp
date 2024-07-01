@@ -105,26 +105,22 @@ namespace emu::SM83
 
                     // Handle ALU operation 
                     if (decoder._currMCycle._alu._operandA != RegisterOperand::None && 
-                        decoder._currMCycle._alu._operandB != RegisterOperand::None)
+                        decoder._currMCycle._alu._operandB != RegisterOperand::None &&
+                        decoder._currMCycle._alu._dest != RegisterOperand::None)
                     {
-                        uint8_t& aluOperandA = regs._reg8Arr[uint8_t(decoder._currMCycle._alu._operandA)];
+                        uint8_t aluOperandA = regs._reg8Arr[uint8_t(decoder._currMCycle._alu._operandA)];
                         uint8_t aluOperandB = regs._reg8Arr[uint8_t(decoder._currMCycle._alu._operandB)];
 
+                        int aluOpFlags = (regs._reg8Arr[uint8_t(RegisterOperand::TempRegZ)] & 0x80) ? PAOF_ZSignHigh : 0;
+                        aluOpFlags |= (regs._reg8Arr[uint8_t(RegisterOperand::TempRegW)] & 0x80) ? PAOF_WSignHigh : 0;
                         ALUOutput aluResult = ProcessALUOp(
                             decoder._currMCycle._alu._op,
                             regs._reg8.F,
                             aluOperandA,
                             aluOperandB,
-                            io._data);
+                            aluOpFlags);
 
-                        // Sort of a hack? If our destination operand is a temporary register, put value result on data bus
-                        if (decoder._currMCycle._alu._operandA == RegisterOperand::TempRegZ ||
-                            decoder._currMCycle._alu._operandA == RegisterOperand::TempRegW)
-                        {
-                            io._data = aluOperandA;
-                        }
-
-                        aluOperandA = aluResult._result;
+                        regs._reg8Arr[uint8_t(decoder._currMCycle._alu._dest)] = aluResult._result;
                         regs._reg8.F = aluResult._flags;
                     }
 

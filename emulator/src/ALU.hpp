@@ -9,12 +9,19 @@ namespace emu::SM83
         uint8_t _flags;
     };
 
+    enum ProcessALUOpFlags
+    {
+        PAOF_None = 0x0,
+        PAOF_ZSignHigh = 0x01,
+        PAOF_WSignHigh = 0x02
+    };
+
     ALUOutput ProcessALUOp(
         ALUOp op,
         uint8_t flagsIn, 
         uint8_t operandA, 
         uint8_t operandB,
-        uint8_t dataBus);
+        int opFlags);
 
 
     struct IDUOutput
