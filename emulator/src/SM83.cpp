@@ -68,7 +68,6 @@ namespace emu::SM83
                         if (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_IsMemWrite)
                         {
                             io._outPins.MRQ = 1;
-                            io._data = regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._reg)];
                         }
                         else
                         {
@@ -129,6 +128,7 @@ namespace emu::SM83
                     if ((decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active) &&
                         (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_IsMemWrite))
                     {
+                        io._data = regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._reg)];
                         io._outPins.WR = 1;
                     }
                 }
