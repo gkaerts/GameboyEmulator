@@ -720,6 +720,16 @@ namespace emu::SM83
                 MakeCycle(NoALU(), NoIDU(), NoMem())
             });
 
+            // DI
+            INSTRUCTIONS[0xF3] = MakeInstruction({
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_DisableInterrupts))
+            });
+
+            // EI
+            INSTRUCTIONS[0xFB] = MakeInstruction({
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_EnableInterrupts))
+            });
+
         }
 
         void PopulateInstructions()
