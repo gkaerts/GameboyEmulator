@@ -6,6 +6,13 @@ namespace emu::SM83
 {
     namespace
     {
+
+        const char* OPCODE_NAMES[] =
+        {
+            #include "OpCodeNames.hpp"
+        };
+        static_assert(sizeof(OPCODE_NAMES) / sizeof(OPCODE_NAMES[0]) == 256);
+
         constexpr const uint32_t MAX_MCYCLE_COUNT = 6;
         struct Instruction
         {
@@ -82,33 +89,53 @@ namespace emu::SM83
         }
 
         MCycle::MemOp MakeMemRead(
-            WideRegisterOperand src,
+            WideRegisterOperand addressSrc,
             RegisterOperand dest)
         {
             return {
-                ._type = MCycle::MemOp::Type::Read,
-                ._readSrcOrWriteDest = src,
-                ._readDestOrWriteSrc = dest
+                ._flags = MCycle::MemOp::MOF_Active,
+                ._reg = dest,
+                ._addressSrc = addressSrc
             };
         }
 
         MCycle::MemOp MakeMemWrite(
             RegisterOperand src,
-            WideRegisterOperand dest)
+            WideRegisterOperand addressSrc)
         {
             return {
-                ._type = MCycle::MemOp::Type::Write,
-                ._readSrcOrWriteDest = dest,
-                ._readDestOrWriteSrc = src
+                ._flags = MCycle::MemOp::MOF_Active | MCycle::MemOp::MOF_IsMemWrite,
+                ._reg = src,
+                ._addressSrc = addressSrc
+            };
+        }
+
+        MCycle::MemOp MakeMemReadWithOffset(
+            RegisterOperand addressSrc,
+            RegisterOperand dest)
+        {
+            return {
+                ._flags = MCycle::MemOp::MOF_Active | MCycle::MemOp::MOF_UseOffsetAddress,
+                ._reg = dest,
+                ._addressSrcBeforeOffset = addressSrc
+            };
+        }
+
+        MCycle::MemOp MakeMemWriteWithOffset(
+            RegisterOperand src,
+            RegisterOperand addressDest)
+        {
+            return {
+                ._flags = MCycle::MemOp::MOF_Active | MCycle::MemOp::MOF_IsMemWrite | MCycle::MemOp::MOF_UseOffsetAddress,
+                ._reg = src,
+                ._addressSrcBeforeOffset = addressDest
             };
         }
 
         MCycle::MemOp NoMem()
         {
             return {
-                ._type = MCycle::MemOp::Type::None,
-                ._readSrcOrWriteDest = WideRegisterOperand::None,
-                ._readDestOrWriteSrc = RegisterOperand::None
+                ._flags = 0,
             };
         }
 
@@ -547,6 +574,43 @@ namespace emu::SM83
             INSTRUCTIONS[0xF5] = MakePushInstruction(WideRegisterOperand::RegAF);
         }
 
+        void PopulateQuadrant11MiscInstructions()
+        {
+            // LD (C), A
+            INSTRUCTIONS[0xE2] = MakeInstruction({
+                MakeCycle(NoALU(), NoIDU(), MakeMemWriteWithOffset(RegisterOperand::RegA, RegisterOperand::RegC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // LD A, (C)
+            INSTRUCTIONS[0xF2] = MakeInstruction({
+                MakeCycle(NoALU(), NoIDU(), MakeMemReadWithOffset(RegisterOperand::RegC, RegisterOperand::RegA)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // LDH (a8), A
+            INSTRUCTIONS[0xE0] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), NoIDU(), MakeMemWriteWithOffset(RegisterOperand::RegA, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // LD A, (a8)
+            INSTRUCTIONS[0xF0] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), NoIDU(), MakeMemReadWithOffset(RegisterOperand::TempRegZ, RegisterOperand::RegA)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // ADD SP, e
+            INSTRUCTIONS[0xE8] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, WideRegisterOperand::RegPC), MakeMemRead(WideRegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(MakeALU(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegSPL), NoIDU(), NoMem()),
+                MakeCycle(MakeALU(ALUOp::Adjust, RegisterOperand::TempRegW, RegisterOperand::RegSPH), NoIDU(), NoMem()),
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, WideRegisterOperand::RegSP))
+            });
+        }
+
         void PopulateInstructions()
         {
             // NOP
@@ -575,6 +639,7 @@ namespace emu::SM83
 
             PopulateQuadrant11ImmALUInstructions();
             PopulateQuadrant11PushPopInstructions();
+            PopulateQuadrant11MiscInstructions();
         }
 
         struct OpCodeStaticInit
@@ -602,5 +667,10 @@ namespace emu::SM83
         EMU_ASSERT("MCycle index out of bounds" && mCycleIndex < i._cycleCount);
 
         return i._cycles[mCycleIndex];
+    }
+
+    const char* GetOpcodeName(uint8_t opCode)
+    {
+        return OPCODE_NAMES[opCode];
     }
 }

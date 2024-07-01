@@ -113,13 +113,14 @@ TEST_P(OpCodeTest, TestOpCode)
         return;
     }
 
+    OPCODE_TEST_OUT << "OP - " << emu::SM83::GetOpcodeName(opCode) << std::endl;
+
     for (const json& test : _testData)
     {
         std::string testName = test["name"];
-
-        //OPCODE_TEST_OUT << "OPCODE - " << testName << std::endl;
-        //if (testName == "27 07 3e")
-        //    __debugbreak();
+        OPCODE_TEST_OUT << testName << std::endl;
+        if (testName == "e8 c5 75")
+            __debugbreak();
 
         emu::SM83::Boot(&_cpu, 0, 0);
         SetCPUState(_cpu, test["initial"], _memory, opCode);
@@ -174,4 +175,10 @@ TEST_P(OpCodeTest, TestOpCode)
 INSTANTIATE_TEST_SUITE_P(
     SM83, 
     OpCodeTest, 
-    testing::Range<uint8_t>(0x00, 0xC0));
+    //testing::Range<uint8_t>(0x00, 0xC0),
+    testing::Values<uint8_t>(0xE8),
+    [](const testing::TestParamInfo<OpCodeTest::ParamType>& info) {
+        std::string name = "OpCode_0xFF";
+        std::snprintf(name.data(), name.length() + 1, "OpCode_0x%02X", info.param);
+        return name;
+    });

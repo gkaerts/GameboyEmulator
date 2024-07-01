@@ -13,7 +13,8 @@ namespace emu::SM83
         ALUOp op,
         uint8_t flagsIn, 
         uint8_t operandA, 
-        uint8_t operandB);
+        uint8_t operandB,
+        uint8_t dataBus);
 
 
     struct IDUOutput

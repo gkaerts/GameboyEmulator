@@ -85,6 +85,7 @@ namespace emu::SM83
 
         AddKeepZ,
         AdcKeepZ,
+        Adjust,
 
 
         Nop
@@ -152,16 +153,22 @@ namespace emu::SM83
 
         struct MemOp
         {
-            enum class Type : uint8_t
+            enum Flags
             {
-                None = 0,
-                Read,
-                Write
+                MOF_None = 0x0,
+                MOF_Active = 0x01,
+                MOF_IsMemWrite = 0x02, // Otherwise read
+                MOF_UseOffsetAddress = 0x04,
             };
-
-            Type _type;
-            WideRegisterOperand _readSrcOrWriteDest;
-            RegisterOperand _readDestOrWriteSrc;
+            
+            uint8_t _flags;
+            RegisterOperand _reg;
+            union 
+            {
+                WideRegisterOperand _addressSrc;
+                RegisterOperand _addressSrcBeforeOffset;
+            };
+            
         };
 
         struct Misc
@@ -226,4 +233,6 @@ namespace emu::SM83
 
     void Boot(CPU* cpu, uint16_t initSP, uint16_t initPC);
     void Tick(CPU* cpu, MemoryController& memCtrl, uint32_t cycles);
+
+    const char* GetOpcodeName(uint8_t opCode);
 }

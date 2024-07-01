@@ -33,7 +33,7 @@ namespace emu::SM83
                         const MCycle& fetchCyle = GetFetchMCycle();
 
                         EMU_ASSERT(decoder._currMCycle._idu._op == IDUOp::Nop);
-                        EMU_ASSERT(decoder._currMCycle._memOp._type == MCycle::MemOp::Type::None);
+                        EMU_ASSERT((decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active) == 0);
 
                         decoder._currMCycle._idu = fetchCyle._idu;
                         decoder._currMCycle._memOp = fetchCyle._memOp;
@@ -46,9 +46,16 @@ namespace emu::SM83
                     }
 
                     // Pull address for memory operation (if any) onto address bus
-                    if (decoder._currMCycle._memOp._type != MCycle::MemOp::Type::None)
+                    if (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active)
                     {
-                        io._address = regs._reg16Arr[uint8_t(decoder._currMCycle._memOp._readSrcOrWriteDest)];
+                        if (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_UseOffsetAddress)
+                        {
+                            io._address = 0xFF00 + regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._addressSrcBeforeOffset)];
+                        }
+                        else
+                        {
+                            io._address = regs._reg16Arr[uint8_t(decoder._currMCycle._memOp._addressSrc)];
+                        }
                     }
                 }
                     break;
@@ -56,17 +63,18 @@ namespace emu::SM83
                 case T1_1:
                 {
                     // Set MRQ and read or write pin based on the memory operation type
-                    if (decoder._currMCycle._memOp._type == MCycle::MemOp::Type::Read)
+                    if (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active)
                     {
-                        io._outPins.MRQ = 1;
-                        io._outPins.RD = 1;
-                    }
-
-                    // Set value of memory write operation onto data bus
-                    else if (decoder._currMCycle._memOp._type == MCycle::MemOp::Type::Write)
-                    {
-                        io._outPins.MRQ = 1;
-                        io._data = regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._readDestOrWriteSrc)];
+                        if (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_IsMemWrite)
+                        {
+                            io._outPins.MRQ = 1;
+                            io._data = regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._reg)];
+                        }
+                        else
+                        {
+                            io._outPins.MRQ = 1;
+                            io._outPins.RD = 1;
+                        }
                     }
                     
                     // Handle IDU operation
@@ -89,9 +97,10 @@ namespace emu::SM83
                 {
                     // If memory was requested it is now on the data bus. Put it in destination register
                     // This handles setting the instruction register in a fetch cycle!!
-                    if (decoder._currMCycle._memOp._type == MCycle::MemOp::Type::Read)
+                    if ((decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active) &&
+                        !(decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_IsMemWrite))
                     {
-                        regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._readDestOrWriteSrc)] = io._data;
+                        regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._reg)] = io._data;
                     }
 
                     // Handle ALU operation 
@@ -105,22 +114,24 @@ namespace emu::SM83
                             decoder._currMCycle._alu._op,
                             regs._reg8.F,
                             aluOperandA,
-                            aluOperandB);
-                        
-                        aluOperandA = aluResult._result;
-                        regs._reg8.F = aluResult._flags;
+                            aluOperandB,
+                            io._data);
 
-                        // Sort of a hack? If our destination operand is a temporary register, put ALU result on data bus
+                        // Sort of a hack? If our destination operand is a temporary register, put value result on data bus
                         if (decoder._currMCycle._alu._operandA == RegisterOperand::TempRegZ ||
                             decoder._currMCycle._alu._operandA == RegisterOperand::TempRegW)
                         {
-                            io._data = aluResult._result;
+                            io._data = aluOperandA;
                         }
+
+                        aluOperandA = aluResult._result;
+                        regs._reg8.F = aluResult._flags;
                     }
 
                     
                     // If memory write was requested notify memory controller
-                    if (decoder._currMCycle._memOp._type == MCycle::MemOp::Type::Write)
+                    if ((decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active) &&
+                        (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_IsMemWrite))
                     {
                         io._outPins.WR = 1;
                     }
