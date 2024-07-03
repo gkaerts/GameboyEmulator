@@ -330,7 +330,8 @@ namespace emu::SM83
 
     IDUOutput ProcessIDUOp(
         IDUOp op,
-        uint16_t operand)
+        uint16_t operand,
+        int opFlags)
     {
         uint16_t result = 0;
 
@@ -344,6 +345,21 @@ namespace emu::SM83
             break;
         case IDUOp::Nop:
             result = operand;
+            break;
+        case IDUOp::Adjust:
+            {
+                bool hasCarry = opFlags & PAOF_ALUHasCarry;
+                uint16_t adj = 0;
+                if (hasCarry && (opFlags & PAOF_ZSignHigh) == 0)
+                {
+                    adj += 1;
+                }
+                else if (!hasCarry && (opFlags & PAOF_ZSignHigh) != 0)
+                {
+                    adj -= 1;
+                }
+                result = operand + adj;
+            }
             break;
         default:
             break;

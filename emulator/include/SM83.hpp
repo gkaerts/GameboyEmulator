@@ -22,7 +22,7 @@ namespace emu::SM83
                 uint16_t AF;            // Flags and accumulator
                 uint16_t SP, PC;        // Stack pointer and program counter
 
-                uint16_t TempZW;        // Temporary internal registers
+                uint16_t TempWZ;        // Temporary internal registers
                 uint16_t IR_IE;
             } _reg16;
 
@@ -96,6 +96,7 @@ namespace emu::SM83
     {
         Inc = 0,
         Dec,
+        Adjust,
 
         Nop
     };
@@ -108,7 +109,7 @@ namespace emu::SM83
         RegD,
         RegL,
         RegH,
-        RegF,   // Not legal to use
+        RegF,
         RegA,
         RegSPL,
         RegSPH,
@@ -119,12 +120,7 @@ namespace emu::SM83
         RegIE,
         RegIR,
 
-        None = 0xFF
-    };
-
-    enum class WideRegisterOperand : uint8_t
-    {
-        RegBC = 0,
+        RegBC,
         RegDE,
         RegHL,
         RegAF,
@@ -133,7 +129,8 @@ namespace emu::SM83
         RegWZ,
         RegIRIE,
 
-        None = 0xFF
+        None = 0xFF,
+        WideRegisterStart = RegBC
     };
 
     struct MCycle
@@ -149,8 +146,8 @@ namespace emu::SM83
         struct IDU
         {
             IDUOp _op;
-            WideRegisterOperand _operand;
-            WideRegisterOperand _dest;
+            RegisterOperand _operand;
+            RegisterOperand _dest;
         };
 
         struct MemOp
@@ -167,7 +164,7 @@ namespace emu::SM83
             RegisterOperand _reg;
             union 
             {
-                WideRegisterOperand _addressSrc;
+                RegisterOperand _addressSrc;
                 RegisterOperand _addressSrcBeforeOffset;
             };
             
@@ -184,10 +181,11 @@ namespace emu::SM83
                 MF_WriteValueToWideRegister = 0x08,
                 MF_EnableInterrupts = 0x10,
                 MF_DisableInterrupts = 0x20,
+                MF_ALUKeepFlags = 0x40,
             };
 
             uint8_t _flags;
-            WideRegisterOperand _wideOperand;
+            RegisterOperand _operand;
             uint8_t _optValue;
         };
 

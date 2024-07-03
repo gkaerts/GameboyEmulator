@@ -13,7 +13,8 @@ namespace emu::SM83
     {
         PAOF_None = 0x0,
         PAOF_ZSignHigh = 0x01,
-        PAOF_WSignHigh = 0x02
+        PAOF_WSignHigh = 0x02,
+        PAOF_ALUHasCarry = 0x04 // Only for IDU ops
     };
 
     ALUOutput ProcessALUOp(
@@ -31,6 +32,7 @@ namespace emu::SM83
 
     IDUOutput ProcessIDUOp(
         IDUOp op,
-        uint16_t operand);
+        uint16_t operand,
+        int opFlags);
 
 }

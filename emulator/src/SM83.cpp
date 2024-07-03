@@ -11,6 +11,44 @@ namespace emu::SM83
     namespace
     {
 
+        uint8_t LoadReg8(Registers& regs, RegisterOperand reg)
+        {
+            return (int(reg) < int(RegisterOperand::WideRegisterStart)) ?
+                regs._reg8Arr[int(reg)] : 
+                uint8_t(regs._reg16Arr[int(reg) - int(RegisterOperand::WideRegisterStart)] & 0xFF);
+        }
+
+        void StoreReg8(Registers& regs, RegisterOperand reg, uint8_t value)
+        {
+            if (int(reg) < int(RegisterOperand::WideRegisterStart))
+            {
+                regs._reg8Arr[int(reg)] = value;
+            }
+            else
+            {
+                regs._reg16Arr[int(reg) - int(RegisterOperand::WideRegisterStart)] = value;
+            }
+        }
+
+        uint16_t LoadReg16(Registers& regs, RegisterOperand reg)
+        {
+            return (int(reg) < int(RegisterOperand::WideRegisterStart)) ?
+                regs._reg8Arr[int(reg)] : 
+                regs._reg16Arr[int(reg) - int(RegisterOperand::WideRegisterStart)];
+        }
+
+        void StoreReg16(Registers& regs, RegisterOperand reg, uint16_t value)
+        {
+            if (int(reg) < int(RegisterOperand::WideRegisterStart))
+            {
+                regs._reg8Arr[int(reg)] = uint8_t(value & 0xFF);
+            }
+            else
+            {
+                regs._reg16Arr[int(reg) - int(RegisterOperand::WideRegisterStart)] = value;
+            }
+        }
+
         TCycleState NextTCycle(TCycleState state)
         {
             return state == T4_1 ? T1_0 : TCycleState(uint8_t(state) + 1);
@@ -34,8 +72,8 @@ namespace emu::SM83
 
                         // Allow fetch cycle IDU op to be overwritten by instruction IDU op
                         if (decoder._currMCycle._idu._op == IDUOp::Nop &&
-                            decoder._currMCycle._idu._operand == WideRegisterOperand::None &&
-                            decoder._currMCycle._idu._dest == WideRegisterOperand::None)
+                            decoder._currMCycle._idu._operand == RegisterOperand::None &&
+                            decoder._currMCycle._idu._dest == RegisterOperand::None)
                         {
                             decoder._currMCycle._idu = fetchCyle._idu;
                         }
@@ -58,11 +96,11 @@ namespace emu::SM83
                     {
                         if (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_UseOffsetAddress)
                         {
-                            io._address = 0xFF00 + regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._addressSrcBeforeOffset)];
+                            io._address = 0xFF00 + LoadReg8(regs, decoder._currMCycle._memOp._addressSrcBeforeOffset);
                         }
                         else
                         {
-                            io._address = regs._reg16Arr[uint8_t(decoder._currMCycle._memOp._addressSrc)];
+                            io._address = LoadReg16(regs, decoder._currMCycle._memOp._addressSrc);
                         }
                     }
                 }
@@ -84,14 +122,6 @@ namespace emu::SM83
                         }
                     }
                     
-                    // Handle IDU operation
-                    if (decoder._currMCycle._idu._operand != WideRegisterOperand::None &&
-                        decoder._currMCycle._idu._dest != WideRegisterOperand::None)
-                    {
-                        uint16_t iduOperand = regs._reg16Arr[uint8_t(decoder._currMCycle._idu._operand)];
-                        IDUOutput iduResult = ProcessIDUOp(decoder._currMCycle._idu._op, iduOperand);
-                        regs._reg16Arr[uint8_t(decoder._currMCycle._idu._dest)] = iduResult._result;
-                    }
                 }
                     break;
 
@@ -108,19 +138,22 @@ namespace emu::SM83
                     if ((decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active) &&
                         !(decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_IsMemWrite))
                     {
-                        regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._reg)] = io._data;
+                        StoreReg8(regs, decoder._currMCycle._memOp._reg, io._data);
                     }
+
+                    int aluOpFlags = (LoadReg8(regs, RegisterOperand::TempRegZ) & 0x80) ? PAOF_ZSignHigh : 0;
+                    aluOpFlags |= (LoadReg8(regs, RegisterOperand::TempRegW) & 0x80) ? PAOF_WSignHigh : 0;
+
+                    uint8_t aluFlags = 0;
 
                     // Handle ALU operation 
                     if (decoder._currMCycle._alu._operandA != RegisterOperand::None && 
                         decoder._currMCycle._alu._operandB != RegisterOperand::None &&
                         decoder._currMCycle._alu._dest != RegisterOperand::None)
                     {
-                        uint8_t aluOperandA = regs._reg8Arr[uint8_t(decoder._currMCycle._alu._operandA)];
-                        uint8_t aluOperandB = regs._reg8Arr[uint8_t(decoder._currMCycle._alu._operandB)];
-
-                        int aluOpFlags = (regs._reg8Arr[uint8_t(RegisterOperand::TempRegZ)] & 0x80) ? PAOF_ZSignHigh : 0;
-                        aluOpFlags |= (regs._reg8Arr[uint8_t(RegisterOperand::TempRegW)] & 0x80) ? PAOF_WSignHigh : 0;
+                        uint8_t aluOperandA = LoadReg8(regs, decoder._currMCycle._alu._operandA);
+                        uint8_t aluOperandB = LoadReg8(regs, decoder._currMCycle._alu._operandB);
+           
                         ALUOutput aluResult = ProcessALUOp(
                             decoder._currMCycle._alu._op,
                             regs._reg8.F,
@@ -128,16 +161,37 @@ namespace emu::SM83
                             aluOperandB,
                             aluOpFlags);
 
-                        regs._reg8Arr[uint8_t(decoder._currMCycle._alu._dest)] = aluResult._result;
-                        regs._reg8.F = aluResult._flags;
+                        StoreReg8(regs, decoder._currMCycle._alu._dest, aluResult._result);
+
+                        if ((decoder._currMCycle._misc._flags & MCycle::Misc::MF_ALUKeepFlags) == 0)
+                        {
+                            regs._reg8.F = aluResult._flags;
+                        }
+
+                        aluFlags = aluResult._flags;
                     }
 
+                    // Handle IDU operation
+                    if (decoder._currMCycle._idu._operand != RegisterOperand::None &&
+                        decoder._currMCycle._idu._dest != RegisterOperand::None)
+                    {
+                        int iduOpFlags = aluOpFlags;
+                        iduOpFlags |= (aluFlags & SF_Carry) ? PAOF_ALUHasCarry : 0;
+
+                        uint16_t iduOperand = LoadReg16(regs, decoder._currMCycle._idu._operand);
+                        IDUOutput iduResult = ProcessIDUOp(
+                            decoder._currMCycle._idu._op, 
+                            iduOperand,
+                            iduOpFlags);
+                            
+                        StoreReg16(regs, decoder._currMCycle._idu._dest, iduResult._result);
+                    }
                     
                     // If memory write was requested notify memory controller
                     if ((decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_Active) &&
                         (decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_IsMemWrite))
                     {
-                        io._data = regs._reg8Arr[uint8_t(decoder._currMCycle._memOp._reg)];
+                        io._data = LoadReg8(regs, decoder._currMCycle._memOp._reg);
                         io._outPins.WR = 1;
                     }
                 }
@@ -151,11 +205,11 @@ namespace emu::SM83
                     // Handle Misc operations
                     if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_WriteWZToWideRegister)
                     {
-                        regs._reg16Arr[uint8_t(decoder._currMCycle._misc._wideOperand)] = regs._reg16Arr[uint8_t(WideRegisterOperand::RegWZ)];
+                        StoreReg16(regs, decoder._currMCycle._misc._operand, regs._reg16.TempWZ);
                     }
                     else if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_WriteValueToWideRegister)
                     {
-                        regs._reg16Arr[uint8_t(decoder._currMCycle._misc._wideOperand)] = decoder._currMCycle._misc._optValue;
+                        StoreReg16(regs, decoder._currMCycle._misc._operand, decoder._currMCycle._misc._optValue);
                     }
 
                     if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_EnableInterrupts)

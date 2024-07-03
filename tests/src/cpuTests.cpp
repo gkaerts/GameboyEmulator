@@ -19,7 +19,6 @@ bool IsTestableOpCode(uint8_t opCode)
     case 0xFB:  // EI
 
     // Unimplemented Opcodes
-    case 0x18:
     case 0x20:
     case 0x28:
     case 0x30:
@@ -176,7 +175,7 @@ INSTANTIATE_TEST_SUITE_P(
     SM83, 
     OpCodeTest, 
     //testing::Range<uint8_t>(0x00, 0xC0),
-    testing::Values<uint8_t>(0xEA),
+    testing::Values<uint8_t>(0x18),
     [](const testing::TestParamInfo<OpCodeTest::ParamType>& info) {
         std::string name = "OpCode_0xFF";
         std::snprintf(name.data(), name.length() + 1, "OpCode_0x%02X", info.param);
