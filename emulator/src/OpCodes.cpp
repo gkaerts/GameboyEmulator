@@ -738,6 +738,16 @@ namespace emu::SM83
                 MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_EnableInterrupts))
             });
 
+            // CALL a16
+            INSTRUCTIONS[0xCD] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), NoMem()),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCH, RegisterOperand::RegSP)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Nop, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCL, RegisterOperand::RegSP), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
         }
 
         void PopulateInstructions()
