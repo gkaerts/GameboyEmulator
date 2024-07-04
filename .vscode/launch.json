@@ -10,6 +10,18 @@
         "cwd": "${workspaceFolder}",
         "environment": [],
         "console": "integratedTerminal"
+    },
+
+    {
+        "name": "Run Tests - Release",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/win64/Release/emulatorTests.exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "console": "integratedTerminal"
     }
     ]
 }
