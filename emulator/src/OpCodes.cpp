@@ -832,6 +832,57 @@ namespace emu::SM83
                 MakeCycle(NoALU(), NoIDU(), NoMem())
             });
 
+            // JP NZ, a16
+            INSTRUCTIONS[0xC2] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW), MakeMiscCheckNZ(3)),
+
+                // NZ false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // NZ true
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // JP Z, a16
+            INSTRUCTIONS[0xCA] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW), MakeMiscCheckZ(3)),
+
+                // Z false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // Z true
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // JP NC, a16
+            INSTRUCTIONS[0xD2] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW), MakeMiscCheckNC(3)),
+
+                // NC false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // NC true
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // JP Z, a16
+            INSTRUCTIONS[0xDA] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW), MakeMiscCheckC(3)),
+
+                // C false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // C true
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
         }
 
         void PopulateInstructions()
