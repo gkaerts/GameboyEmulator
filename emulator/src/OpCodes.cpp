@@ -13,7 +13,7 @@ namespace emu::SM83
         };
         static_assert(sizeof(OPCODE_NAMES) / sizeof(OPCODE_NAMES[0]) == 256);
 
-        constexpr const uint32_t MAX_MCYCLE_COUNT = 6;
+        constexpr const uint32_t MAX_MCYCLE_COUNT = 8;
         struct Instruction
         {
             uint32_t _cycleCount;
@@ -938,6 +938,66 @@ namespace emu::SM83
                 MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegSP), MakeMemRead(RegisterOperand::RegSP, RegisterOperand::TempRegW)),
                 MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
                 MakeCycle(NoALU(), NoIDU(), NoMem()),
+            });
+
+            // CALL NZ, a16
+            INSTRUCTIONS[0xC4] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW), MakeMiscCheckNZ(3)),
+
+                // false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // true
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), NoMem()),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCH, RegisterOperand::RegSP)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Nop, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCL, RegisterOperand::RegSP), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // CALL Z, a16
+            INSTRUCTIONS[0xCC] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW), MakeMiscCheckZ(3)),
+
+                // false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // true
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), NoMem()),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCH, RegisterOperand::RegSP)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Nop, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCL, RegisterOperand::RegSP), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // CALL NC, a16
+            INSTRUCTIONS[0xD4] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW), MakeMiscCheckNC(3)),
+
+                // false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // true
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), NoMem()),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCH, RegisterOperand::RegSP)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Nop, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCL, RegisterOperand::RegSP), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+
+            // CALL C, a16
+            INSTRUCTIONS[0xDC] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegW), MakeMiscCheckC(3)),
+
+                // false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // true
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), NoMem()),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCH, RegisterOperand::RegSP)),
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Nop, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCL, RegisterOperand::RegSP), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
             });
         }
 
