@@ -20,7 +20,7 @@ namespace emu::SM83
             std::array<MCycle, MAX_MCYCLE_COUNT> _cycles;
         };
 
-        Instruction INSTRUCTIONS[0xFF] = {};
+        Instruction INSTRUCTIONS[0x100] = {};
 
         constexpr const RegisterOperand REGISTER_OPERAND_LUT[]
         {
