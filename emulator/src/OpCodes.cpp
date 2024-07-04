@@ -687,13 +687,13 @@ namespace emu::SM83
             };
 
             INSTRUCTIONS[0xC1] = MakePopInstruction(RegisterOperand::RegBC);
-            INSTRUCTIONS[0xD1] = MakePopInstruction(RegisterOperand::RegBC);
-            INSTRUCTIONS[0xE1] = MakePopInstruction(RegisterOperand::RegBC);
+            INSTRUCTIONS[0xD1] = MakePopInstruction(RegisterOperand::RegDE);
+            INSTRUCTIONS[0xE1] = MakePopInstruction(RegisterOperand::RegHL);
             INSTRUCTIONS[0xF1] = MakePopInstruction(RegisterOperand::RegAF);
 
             INSTRUCTIONS[0xC5] = MakePushInstruction(RegisterOperand::RegBC);
-            INSTRUCTIONS[0xD5] = MakePushInstruction(RegisterOperand::RegBC);
-            INSTRUCTIONS[0xE5] = MakePushInstruction(RegisterOperand::RegBC);
+            INSTRUCTIONS[0xD5] = MakePushInstruction(RegisterOperand::RegDE);
+            INSTRUCTIONS[0xE5] = MakePushInstruction(RegisterOperand::RegHL);
             INSTRUCTIONS[0xF5] = MakePushInstruction(RegisterOperand::RegAF);
         }
 

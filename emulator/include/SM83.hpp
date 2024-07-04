@@ -220,14 +220,12 @@ namespace emu::SM83
             DF_None = 0x0,
             DF_ExecutionStopped = 0x01,         // Not sure if this is the right place for this
             DF_ExecutionHalted = 0x02,
+            DF_SignBitHigh = 0x04,              // Same with this one
         };
 
         uint8_t _flags;
         uint8_t _nextMCycleIndex;
         TCycleState _tCycleState;
-
-        uint8_t IR;
-        uint8_t _temp;
 
         MCycle _currMCycle;
     };

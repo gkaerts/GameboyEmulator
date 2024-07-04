@@ -59,6 +59,12 @@ namespace emu::SM83
             return (cycle._misc._flags & MCycle::Misc::MF_LastCycle) || (indexInOpcode == GetMCycleCount(opcode) - 1);
         }
 
+        void FixupFlagRegister(Registers& regs)
+        {
+            uint8_t mask = (SF_Carry | SF_HalfCarry | SF_Subtract | SF_Zero);
+            regs._reg8.F &= mask;
+        }
+
         void ProcessCurrentMCycle(
             IO& io, 
             Registers& regs,
@@ -144,11 +150,21 @@ namespace emu::SM83
                         !(decoder._currMCycle._memOp._flags & MCycle::MemOp::MOF_IsMemWrite))
                     {
                         StoreReg8(regs, decoder._currMCycle._memOp._reg, io._data);
+                        if (decoder._currMCycle._memOp._reg == RegisterOperand::TempRegZ)
+                        {
+                            // This feels like a hack :(
+                            if (io._data & 0x80)
+                            {
+                                decoder._flags |= Decoder::DF_SignBitHigh;
+                            }
+                            else
+                            {
+                                decoder._flags &= ~Decoder::DF_SignBitHigh;
+                            }
+                        }
                     }
-
-                    int aluOpFlags = (LoadReg8(regs, RegisterOperand::TempRegZ) & 0x80) ? PAOF_ZSignHigh : 0;
-                    aluOpFlags |= (LoadReg8(regs, RegisterOperand::TempRegW) & 0x80) ? PAOF_WSignHigh : 0;
-
+                    
+                    int aluOpFlags = (decoder._flags & Decoder::DF_SignBitHigh) ? PAOF_ZSignHigh : 0;
                     uint8_t aluFlags = 0;
 
                     // Handle ALU operation 
@@ -166,12 +182,12 @@ namespace emu::SM83
                             aluOperandB,
                             aluOpFlags);
 
-                        StoreReg8(regs, decoder._currMCycle._alu._dest, aluResult._result);
-
                         if ((decoder._currMCycle._misc._flags & MCycle::Misc::MF_ALUKeepFlags) == 0)
                         {
                             regs._reg8.F = aluResult._flags;
                         }
+
+                        StoreReg8(regs, decoder._currMCycle._alu._dest, aluResult._result);
 
                         aluFlags = aluResult._flags;
                     }
@@ -211,6 +227,7 @@ namespace emu::SM83
                     if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_WriteWZToWideRegister)
                     {
                         StoreReg16(regs, decoder._currMCycle._misc._operand, regs._reg16.TempWZ);
+                        FixupFlagRegister(regs);    // In case we wrote to F
                     }
                     else if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_WriteValueToWideRegister)
                     {

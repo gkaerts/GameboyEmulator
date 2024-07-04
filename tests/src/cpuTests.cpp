@@ -17,6 +17,7 @@ bool IsTestableOpCode(uint8_t opCode)
     case 0x76:  // HALT
     case 0xF3:  // DI
     case 0xFB:  // EI
+    case 0xCB:  // Prefix (unimplemented)
 
     // Invalid Opcodes
     case 0xD3:
@@ -39,7 +40,7 @@ bool IsTestableOpCode(uint8_t opCode)
     }
 }
 
-class OpCodeTest : public testing::TestWithParam<uint8_t>
+class OpCodeTest : public testing::TestWithParam<uint16_t>
 {
     public:
 
@@ -50,13 +51,13 @@ class OpCodeTest : public testing::TestWithParam<uint8_t>
                 ._memory = _memory.data()
             };
 
-            if (IsTestableOpCode(GetParam()))
+            if (IsTestableOpCode(uint8_t(GetParam())))
             {
                 char fileName[256]= {};
                 snprintf(fileName, 
                     sizeof(fileName), 
                     "contrib/submodules/GameboyCPUTests/v2/%02x.json", 
-                    GetParam());
+                    uint8_t(GetParam()));
 
                 std::ifstream f(fileName);
                 _testData = json::parse(f);
@@ -100,7 +101,7 @@ void SetCPUState(emu::SM83::CPU& cpu, const json& state, std::vector<uint8_t>& m
 
 TEST_P(OpCodeTest, TestOpCode)
 {
-    uint8_t opCode = GetParam();
+    uint8_t opCode = uint8_t(GetParam());
     if (!IsTestableOpCode(opCode))
     {
         return;
@@ -111,9 +112,9 @@ TEST_P(OpCodeTest, TestOpCode)
     for (const json& test : _testData)
     {
         std::string testName = test["name"];
-        OPCODE_TEST_OUT << testName << std::endl;
-        if (testName == "f8 b8 30")
-            __debugbreak();
+        //OPCODE_TEST_OUT << testName << std::endl;
+        //if (testName == "f8 b8 30")
+        //    __debugbreak();
 
         emu::SM83::Boot(&_cpu, 0, 0);
         SetCPUState(_cpu, test["initial"], _memory, opCode);
@@ -168,8 +169,7 @@ TEST_P(OpCodeTest, TestOpCode)
 INSTANTIATE_TEST_SUITE_P(
     SM83, 
     OpCodeTest, 
-    testing::Range<uint8_t>(0x00, 0xC0),
-    //testing::Values<uint8_t>(0x20),
+    testing::Range<uint16_t>(0x00, 0x100),
     [](const testing::TestParamInfo<OpCodeTest::ParamType>& info) {
         std::string name = "OpCode_0xFF";
         std::snprintf(name.data(), name.length() + 1, "OpCode_0x%02X", info.param);
