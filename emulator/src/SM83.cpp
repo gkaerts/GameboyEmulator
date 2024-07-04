@@ -54,6 +54,11 @@ namespace emu::SM83
             return state == T4_1 ? T1_0 : TCycleState(uint8_t(state) + 1);
         }
 
+        bool IsLastMCycle(const MCycle& cycle, uint8_t indexInOpcode, uint8_t opcode)
+        {
+            return (cycle._misc._flags & MCycle::Misc::MF_LastCycle) || (indexInOpcode == GetMCycleCount(opcode) - 1);
+        }
+
         void ProcessCurrentMCycle(
             IO& io, 
             Registers& regs,
@@ -66,7 +71,7 @@ namespace emu::SM83
                     decoder._currMCycle = GetMCycle(regs._reg8.IR, decoder._nextMCycleIndex);
 
                     // Set M1 pin if we're in a fetch cycle and overlap MCycle with fetch cycle if required
-                    if (decoder._nextMCycleIndex == GetMCycleCount(regs._reg8.IR) - 1)
+                    if (IsLastMCycle(decoder._currMCycle, decoder._nextMCycleIndex, regs._reg8.IR))
                     {
                         const MCycle& fetchCyle = GetFetchMCycle();
 
@@ -219,6 +224,15 @@ namespace emu::SM83
                     else if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_DisableInterrupts)
                     {
                         regs._reg8.IE = 0;
+                    }
+
+                    // Conditional checks
+                    if ((decoder._currMCycle._misc._flags & MCycle::Misc::MF_ConditionCheckC) && (regs._reg8.F & SF_Carry) ||
+                        (decoder._currMCycle._misc._flags & MCycle::Misc::MF_ConditionCheckZ) && (regs._reg8.F & SF_Zero) ||
+                        (decoder._currMCycle._misc._flags & MCycle::Misc::MF_ConditionCheckNC) && !(regs._reg8.F & SF_Carry) ||
+                        (decoder._currMCycle._misc._flags & MCycle::Misc::MF_ConditionCheckNZ) && !(regs._reg8.F & SF_Zero))
+                    {
+                        decoder._nextMCycleIndex = decoder._currMCycle._misc._optValue;
                     }
                 }
                     break;

@@ -172,7 +172,7 @@ namespace emu::SM83
 
         struct Misc
         {
-            enum Flags : uint8_t
+            enum Flags : uint16_t
             {
                 MF_None = 0x0,
                 MF_WriteWZToWideRegister = 0x01,
@@ -182,9 +182,15 @@ namespace emu::SM83
                 MF_EnableInterrupts = 0x10,
                 MF_DisableInterrupts = 0x20,
                 MF_ALUKeepFlags = 0x40,
+
+                MF_LastCycle = 0x80,
+                MF_ConditionCheckZ = 0x100,
+                MF_ConditionCheckNZ = 0x200,
+                MF_ConditionCheckC = 0x400,
+                MF_ConditionCheckNC = 0x800,
             };
 
-            uint8_t _flags;
+            uint16_t _flags;
             RegisterOperand _operand;
             uint8_t _optValue;
         };

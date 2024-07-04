@@ -178,6 +178,42 @@ namespace emu::SM83
             };
         }
 
+        MCycle::Misc MakeMiscCheckC(uint8_t cycleIndexToJumpTo)
+        {
+            return {
+                ._flags = MCycle::Misc::MF_ConditionCheckC,
+                ._operand = RegisterOperand::None,
+                ._optValue = cycleIndexToJumpTo
+            };
+        }
+
+        MCycle::Misc MakeMiscCheckNC(uint8_t cycleIndexToJumpTo)
+        {
+            return {
+                ._flags = MCycle::Misc::MF_ConditionCheckNC,
+                ._operand = RegisterOperand::None,
+                ._optValue = cycleIndexToJumpTo
+            };
+        }
+
+        MCycle::Misc MakeMiscCheckZ(uint8_t cycleIndexToJumpTo)
+        {
+            return {
+                ._flags = MCycle::Misc::MF_ConditionCheckZ,
+                ._operand = RegisterOperand::None,
+                ._optValue = cycleIndexToJumpTo
+            };
+        }
+
+        MCycle::Misc MakeMiscCheckNZ(uint8_t cycleIndexToJumpTo)
+        {
+            return {
+                ._flags = MCycle::Misc::MF_ConditionCheckNZ,
+                ._operand = RegisterOperand::None,
+                ._optValue = cycleIndexToJumpTo
+            };
+        }
+
         MCycle::Misc NoMisc()
         {
             return {
@@ -454,6 +490,54 @@ namespace emu::SM83
                 MakeCycle(MakeALU(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegPCL), MakeIDUExt(IDUOp::Adjust, RegisterOperand::RegPCH, RegisterOperand::TempRegW), NoMem(), MakeMisc(MCycle::Misc::MF_ALUKeepFlags)),
                 MakeCycle(NoALU(), MakeIDUExt(IDUOp::Inc, RegisterOperand::RegWZ, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegWZ, RegisterOperand::RegIR))
 
+            });
+
+            // JR NZ, r8
+            INSTRUCTIONS[0x20] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ), MakeMiscCheckNZ(2)),
+
+                // NZ false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // NZ true
+                MakeCycle(MakeALU(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegPCL), MakeIDUExt(IDUOp::Adjust, RegisterOperand::RegPCH, RegisterOperand::TempRegW), NoMem(), MakeMisc(MCycle::Misc::MF_ALUKeepFlags)),
+                MakeCycle(NoALU(), MakeIDUExt(IDUOp::Inc, RegisterOperand::RegWZ, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegWZ, RegisterOperand::RegIR))
+            });
+
+            // JR Z, r8
+            INSTRUCTIONS[0x28] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ), MakeMiscCheckZ(2)),
+
+                // Z false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // Z true
+                MakeCycle(MakeALU(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegPCL), MakeIDUExt(IDUOp::Adjust, RegisterOperand::RegPCH, RegisterOperand::TempRegW), NoMem(), MakeMisc(MCycle::Misc::MF_ALUKeepFlags)),
+                MakeCycle(NoALU(), MakeIDUExt(IDUOp::Inc, RegisterOperand::RegWZ, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegWZ, RegisterOperand::RegIR))
+            });
+
+            // JR NC, r8
+            INSTRUCTIONS[0x30] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ), MakeMiscCheckNC(2)),
+
+                // NC false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // NC true
+                MakeCycle(MakeALU(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegPCL), MakeIDUExt(IDUOp::Adjust, RegisterOperand::RegPCH, RegisterOperand::TempRegW), NoMem(), MakeMisc(MCycle::Misc::MF_ALUKeepFlags)),
+                MakeCycle(NoALU(), MakeIDUExt(IDUOp::Inc, RegisterOperand::RegWZ, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegWZ, RegisterOperand::RegIR))
+            });
+
+            // JR C, r8
+            INSTRUCTIONS[0x38] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::TempRegZ), MakeMiscCheckC(2)),
+
+                // C false
+                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_LastCycle)),
+
+                // C true
+                MakeCycle(MakeALU(ALUOp::Add, RegisterOperand::TempRegZ, RegisterOperand::RegPCL), MakeIDUExt(IDUOp::Adjust, RegisterOperand::RegPCH, RegisterOperand::TempRegW), NoMem(), MakeMisc(MCycle::Misc::MF_ALUKeepFlags)),
+                MakeCycle(NoALU(), MakeIDUExt(IDUOp::Inc, RegisterOperand::RegWZ, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegWZ, RegisterOperand::RegIR))
             });
         }
 
