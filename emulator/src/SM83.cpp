@@ -54,9 +54,9 @@ namespace emu::SM83
             return state == T4_1 ? T1_0 : TCycleState(uint8_t(state) + 1);
         }
 
-        bool IsLastMCycle(const MCycle& cycle, uint8_t indexInOpcode, uint8_t opcode)
+        bool IsLastMCycle(InstructionTable table, const MCycle& cycle, uint8_t indexInOpcode, uint8_t opcode)
         {
-            return (cycle._misc._flags & MCycle::Misc::MF_LastCycle) || (indexInOpcode == GetMCycleCount(opcode) - 1);
+            return (cycle._misc._flags & MCycle::Misc::MF_LastCycle) || (indexInOpcode == GetMCycleCount(table, opcode) - 1);
         }
 
         void FixupFlagRegister(Registers& regs)
@@ -74,10 +74,10 @@ namespace emu::SM83
             {
                 case T1_0:
                 {
-                    decoder._currMCycle = GetMCycle(regs._reg8.IR, decoder._nextMCycleIndex);
+                    decoder._currMCycle = GetMCycle(decoder._table, regs._reg8.IR, decoder._nextMCycleIndex);
 
                     // Set M1 pin if we're in a fetch cycle and overlap MCycle with fetch cycle if required
-                    if (IsLastMCycle(decoder._currMCycle, decoder._nextMCycleIndex, regs._reg8.IR))
+                    if (IsLastMCycle(decoder._table, decoder._currMCycle, decoder._nextMCycleIndex, regs._reg8.IR))
                     {
                         const MCycle& fetchCyle = GetFetchMCycle();
 
@@ -96,10 +96,19 @@ namespace emu::SM83
                         }
                         io._outPins.M1 = 1;
                         decoder._nextMCycleIndex = 0;
+
+                        // Revert to using default instruction table
+                        decoder._table = InstructionTable::Default;
                     }
                     else
                     {
                         decoder._nextMCycleIndex++;
+                    }
+
+                    // Switch instruction tables here if needed
+                    if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_PrefixCB)
+                    {
+                        decoder._table = InstructionTable::PrefixCB;
                     }
 
                     // Pull address for memory operation (if any) onto address bus
@@ -182,10 +191,16 @@ namespace emu::SM83
                             aluOperandB,
                             aluOpFlags);
 
+                        if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_ALUClearZero)
+                        {
+                            aluResult._flags &= ~SF_Zero;
+                        }
+
                         if ((decoder._currMCycle._misc._flags & MCycle::Misc::MF_ALUKeepFlags) == 0)
                         {
                             regs._reg8.F = aluResult._flags;
                         }
+
 
                         StoreReg8(regs, decoder._currMCycle._alu._dest, aluResult._result);
 
@@ -307,6 +322,7 @@ namespace emu::SM83
         cpu->_decoder._nextMCycleIndex = 0;
         cpu->_decoder._tCycleState = T1_0;
         cpu->_decoder._flags = 0;
+        cpu->_decoder._table = InstructionTable::Default;
     }
 
     void Tick(CPU* cpu, MemoryController& memCtrl, uint32_t cycles)

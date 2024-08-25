@@ -13,6 +13,18 @@ namespace emu::SM83
         };
         static_assert(sizeof(OPCODE_NAMES) / sizeof(OPCODE_NAMES[0]) == 256);
 
+        const char* PREFIX_OPCODE_NAMES[] =
+        {
+            #include "PrefixOpCodeNames.hpp"
+        };
+        static_assert(sizeof(PREFIX_OPCODE_NAMES) / sizeof(PREFIX_OPCODE_NAMES[0]) == 256);
+
+        const char** OPCODE_NAME_TABLES[] =
+        {
+            OPCODE_NAMES,
+            PREFIX_OPCODE_NAMES
+        };
+
         constexpr const uint32_t MAX_MCYCLE_COUNT = 8;
         struct Instruction
         {
@@ -21,6 +33,14 @@ namespace emu::SM83
         };
 
         Instruction INSTRUCTIONS[0x100] = {};
+        Instruction PREFIX_INSTRUCTIONS[0x100] = {};
+
+        const Instruction* INSTRUCTION_TABLES[] = 
+        {
+            INSTRUCTIONS,
+            PREFIX_INSTRUCTIONS
+        };
+
 
         constexpr const RegisterOperand REGISTER_OPERAND_LUT[]
         {
@@ -169,7 +189,7 @@ namespace emu::SM83
             };
         }
 
-        MCycle::Misc MakeMisc(uint8_t miscFlags, RegisterOperand operand = RegisterOperand::None, uint8_t optValue = 0)
+        MCycle::Misc MakeMisc(uint16_t miscFlags, RegisterOperand operand = RegisterOperand::None, uint8_t optValue = 0)
         {
             return {
                 ._flags = miscFlags,
@@ -235,6 +255,8 @@ namespace emu::SM83
                 ._misc = misc
             };
         }
+
+        const MCycle FETCH_MCYCLE = MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::RegIR));
 
         Instruction MakeInstruction(std::initializer_list<MCycle> cycles)
         {
@@ -431,7 +453,7 @@ namespace emu::SM83
             auto MakeALUInstruction = [](ALUOp op, RegisterOperand operand) -> Instruction
             {
                 return MakeInstruction({
-                    MakeCycle(MakeALU(op, operand, operand), NoIDU(), NoMem())
+                    MakeCycle(MakeALU(op, operand, operand), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_ALUClearZero))
                 });
             };
 
@@ -999,6 +1021,98 @@ namespace emu::SM83
                 MakeCycle(NoALU(), MakeIDU(IDUOp::Nop, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCL, RegisterOperand::RegSP), MakeMisc(MCycle::Misc::MF_WriteWZToWideRegister, RegisterOperand::RegPC)),
                 MakeCycle(NoALU(), NoIDU(), NoMem())
             });
+
+            // PREFIX CB
+            // Implement as a fetch cycle + a dummy cycle which will be overwritten by the next MCycle from the prefix table
+            INSTRUCTIONS[0xCB] = MakeInstruction({
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::RegIR), MakeMisc(MCycle::Misc::MF_PrefixCB)),
+                MakeCycle(NoALU(), NoIDU(), NoMem())
+            });
+        }
+
+        void PopulatePrefixCBInstructions()
+        {
+            auto MakePrefixCBALUInstruction = [](ALUOp op, RegisterOperand operand) -> Instruction
+            {
+                return MakeInstruction({
+                    FETCH_MCYCLE,
+                    MakeCycle(MakeALU(op, operand, operand), NoIDU(), NoMem())
+                });
+            };
+
+            auto MakePrefixCBIndirectALUInstruction = [](ALUOp op, RegisterOperand operand) -> Instruction
+            {
+                return MakeInstruction({
+                    FETCH_MCYCLE,
+                    MakeCycle(NoALU(), NoIDU(), MakeMemRead(operand, RegisterOperand::TempRegZ)),
+                    MakeCycle(MakeALU(op, RegisterOperand::TempRegZ, RegisterOperand::TempRegZ), NoIDU(), MakeMemWrite(RegisterOperand::TempRegZ, operand)),
+                    MakeCycle(NoALU(), NoIDU(), NoMem())
+                });
+            };
+
+            auto MakePrefixCBIndirectBitInstruction = [](ALUOp op, RegisterOperand operand) -> Instruction
+            {
+                return MakeInstruction({
+                    FETCH_MCYCLE,
+                    MakeCycle(NoALU(), NoIDU(), MakeMemRead(operand, RegisterOperand::TempRegZ)),
+                    MakeCycle(MakeALU(op, RegisterOperand::TempRegZ, RegisterOperand::TempRegZ), NoIDU(), NoMem()),
+                });
+            };
+
+            for (uint8_t i = 0; i < 8; ++i)
+            {
+                using MakeInstructionFn = Instruction(*)(ALUOp, RegisterOperand);
+
+                MakeInstructionFn makeInstructionFn = MakePrefixCBALUInstruction;
+                MakeInstructionFn makeBitInstructionFn = MakePrefixCBALUInstruction;
+
+                RegisterOperand operand = OpCodeRegisterIndexToRegisterOperand(i);
+                if (operand == RegisterOperand::None) 
+                {
+                    operand = RegisterOperand::RegHL;
+                    makeInstructionFn = MakePrefixCBIndirectALUInstruction;
+                    makeBitInstructionFn = MakePrefixCBIndirectBitInstruction;
+                }
+
+                // RLC r8
+                PREFIX_INSTRUCTIONS[0x00 + i] = makeInstructionFn(ALUOp::Rlc, operand);
+
+                // RRC r8
+                PREFIX_INSTRUCTIONS[0x08 + i] = makeInstructionFn(ALUOp::Rrc, operand);
+
+                // RL r8
+                PREFIX_INSTRUCTIONS[0x10 + i] = makeInstructionFn(ALUOp::Rl, operand);
+
+                // RR r8
+                PREFIX_INSTRUCTIONS[0x18 + i] = makeInstructionFn(ALUOp::Rr, operand);
+
+                // SLA r8
+                PREFIX_INSTRUCTIONS[0x20 + i] = makeInstructionFn(ALUOp::Sla, operand);
+
+                // SRA r8
+                PREFIX_INSTRUCTIONS[0x28 + i] = makeInstructionFn(ALUOp::Sra, operand);
+
+                // SWAP r8
+                PREFIX_INSTRUCTIONS[0x30 + i] = makeInstructionFn(ALUOp::Swap, operand);
+
+                // SRL r8
+                PREFIX_INSTRUCTIONS[0x38 + i] = makeInstructionFn(ALUOp::Srl, operand);
+
+                
+                for (uint8_t bit = 0; bit < 8; ++bit)
+                {
+                    uint8_t irOffset = bit * 8 + i;
+
+                    // BIT u3, r8
+                    PREFIX_INSTRUCTIONS[0x40 + irOffset] = makeBitInstructionFn(ALUOp(int(ALUOp::Bit0) + bit), operand);
+
+                    // RES u3, r8
+                    PREFIX_INSTRUCTIONS[0x80 + irOffset] = makeInstructionFn(ALUOp(int(ALUOp::Res0) + bit), operand);
+
+                    // SET u3, r8
+                    PREFIX_INSTRUCTIONS[0xC0 + irOffset] = makeInstructionFn(ALUOp(int(ALUOp::Set0) + bit), operand);
+                }
+            }
         }
 
         void PopulateInstructions()
@@ -1030,6 +1144,8 @@ namespace emu::SM83
             PopulateQuadrant11ImmALUInstructions();
             PopulateQuadrant11PushPopInstructions();
             PopulateQuadrant11MiscInstructions();
+
+            PopulatePrefixCBInstructions();
         }
 
         struct OpCodeStaticInit
@@ -1040,27 +1156,25 @@ namespace emu::SM83
             }
 
         } OPCODE_STATIC_INIT;
-
-        const MCycle FETCH_MCYCLE = MakeCycle(NoALU(), MakeIDU(IDUOp::Inc, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::RegIR));
     }
 
     const MCycle& GetFetchMCycle() { return FETCH_MCYCLE; };
 
-    uint8_t GetMCycleCount(uint8_t opCode)
+    uint8_t GetMCycleCount(InstructionTable table, uint8_t opCode)
     {
-        return INSTRUCTIONS[opCode]._cycleCount;
+        return INSTRUCTION_TABLES[int(table)][opCode]._cycleCount;
     }
 
-    const MCycle& GetMCycle(uint8_t opCode, uint8_t mCycleIndex)
+    const MCycle& GetMCycle(InstructionTable table, uint8_t opCode, uint8_t mCycleIndex)
     {
-        const Instruction& i = INSTRUCTIONS[opCode];
+        const Instruction& i = INSTRUCTION_TABLES[int(table)][opCode];
         EMU_ASSERT("MCycle index out of bounds" && mCycleIndex < i._cycleCount);
 
         return i._cycles[mCycleIndex];
     }
 
-    const char* GetOpcodeName(uint8_t opCode)
+    const char* GetOpcodeName(InstructionTable table, uint8_t opCode)
     {
-        return OPCODE_NAMES[opCode];
+        return OPCODE_NAME_TABLES[int(table)][opCode];
     }
 }

@@ -5,6 +5,6 @@ namespace emu::SM83
 {
     const MCycle& GetFetchMCycle();
 
-    uint8_t GetMCycleCount(uint8_t opCode);
-    const MCycle& GetMCycle(uint8_t opCode, uint8_t mCycleIndex);
+    uint8_t GetMCycleCount(InstructionTable table, uint8_t opCode);
+    const MCycle& GetMCycle(InstructionTable table, uint8_t opCode, uint8_t mCycleIndex);
 }

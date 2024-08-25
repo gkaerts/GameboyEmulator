@@ -179,7 +179,7 @@ namespace emu::SM83
                 ._C = uint8_t(operandBWide & 0x80) ? uint8_t(1) : uint8_t(0),
                 ._H = 0,
                 ._N = 0,
-                ._Z = 0,
+                ._Z = (resultWide & 0xFF) == 0,
             };
             break;
         case ALUOp::Rlc:
@@ -192,7 +192,7 @@ namespace emu::SM83
                 ._C = HasCarry(resultWide),
                 ._H = 0,
                 ._N = 0,
-                ._Z = 0,
+                ._Z = (resultWide & 0xFF) == 0,
             };
         }
             break;
@@ -203,7 +203,7 @@ namespace emu::SM83
                 ._C = uint8_t(operandBWide & 0x01),
                 ._H = 0,
                 ._N = 0,
-                ._Z = 0,
+                ._Z = (resultWide & 0xFF) == 0,
             };
             break;
         case ALUOp::Rrc:
@@ -216,7 +216,7 @@ namespace emu::SM83
                 ._C = uint8_t(operandBWide & 0x01),
                 ._H = 0,
                 ._N = 0,
-                ._Z = 0,
+                ._Z = (resultWide & 0xFF) == 0,
             };
         }
             break;        
@@ -315,6 +315,109 @@ namespace emu::SM83
                 ._N = 0,
                 ._Z = 0,
             };
+        }
+            break;
+        case ALUOp::Sla:
+        {
+            resultWide = operandBWide << 1;
+            flagsOut._bits = 
+            {
+                ._C = HasCarry(resultWide),
+                ._H = 0,
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
+        }
+            break;
+        case ALUOp::Sra:
+        {
+            uint16_t msb = operandBWide & 0x80;
+            resultWide = msb | (operandBWide >> 1);
+            flagsOut._bits = 
+            {
+                ._C = (operandB & 0x01) != 0,
+                ._H = 0,
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
+        }
+            break;
+
+        case ALUOp::Swap:
+        {
+            uint8_t low = operandB & 0x0F;
+            uint8_t high = operandB & 0xF0;
+            
+            resultWide = (low << 4) | (high >> 4);
+            flagsOut._bits = 
+            {
+                ._C = 0,
+                ._H = 0,
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
+        }
+            break;
+        case ALUOp::Srl:
+        {
+            resultWide = (operandBWide >> 1);
+            flagsOut._bits = 
+            {
+                ._C = (operandB & 0x01) != 0,
+                ._H = 0,
+                ._N = 0,
+                ._Z = (resultWide & 0xFF) == 0,
+            };
+        }
+            break;
+        case ALUOp::Bit0:
+        case ALUOp::Bit1:
+        case ALUOp::Bit2:
+        case ALUOp::Bit3:
+        case ALUOp::Bit4:
+        case ALUOp::Bit5:
+        case ALUOp::Bit6:
+        case ALUOp::Bit7:
+        {
+            int bitIdx = int(op) - int(ALUOp::Bit0);
+            uint16_t mask = 1 << bitIdx;
+            resultWide = operandBWide;
+
+            flagsOut._bits =
+            {
+                ._C = flagsOut._bits._C,
+                ._H = 1,
+                ._N = 0,
+                ._Z = (operandBWide & mask) == 0,
+            };
+        }
+            break;
+        case ALUOp::Res0:
+        case ALUOp::Res1:
+        case ALUOp::Res2:
+        case ALUOp::Res3:
+        case ALUOp::Res4:
+        case ALUOp::Res5:
+        case ALUOp::Res6:
+        case ALUOp::Res7:
+        {
+            int bitIdx = int(op) - int(ALUOp::Res0);
+            uint16_t mask = 1 << bitIdx;
+            resultWide = operandBWide & ~mask;
+        }
+            break;
+        case ALUOp::Set0:
+        case ALUOp::Set1:
+        case ALUOp::Set2:
+        case ALUOp::Set3:
+        case ALUOp::Set4:
+        case ALUOp::Set5:
+        case ALUOp::Set6:
+        case ALUOp::Set7:
+        {
+            int bitIdx = int(op) - int(ALUOp::Set0);
+            uint16_t mask = 1 << bitIdx;
+            resultWide = operandBWide | mask;
         }
             break;
         default:

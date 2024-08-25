@@ -87,6 +87,37 @@ namespace emu::SM83
         AdcKeepZ,
         Adjust,
 
+        Sla,
+        Sra,
+        Swap,
+        Srl,
+
+        Bit0,
+        Bit1,
+        Bit2,
+        Bit3,
+        Bit4,
+        Bit5,
+        Bit6,
+        Bit7,
+
+        Res0,
+        Res1,
+        Res2,
+        Res3,
+        Res4,
+        Res5,
+        Res6,
+        Res7,
+
+        Set0,
+        Set1,
+        Set2,
+        Set3,
+        Set4,
+        Set5,
+        Set6,
+        Set7,
 
         Nop
     };
@@ -188,6 +219,9 @@ namespace emu::SM83
                 MF_ConditionCheckNZ = 0x200,
                 MF_ConditionCheckC = 0x400,
                 MF_ConditionCheckNC = 0x800,
+
+                MF_PrefixCB = 0x1000,
+                MF_ALUClearZero = 0x2000,
             };
 
             uint16_t _flags;
@@ -213,6 +247,11 @@ namespace emu::SM83
         T4_1
     };
 
+    enum class InstructionTable : uint8_t
+    {
+        Default,
+        PrefixCB,
+    };
     struct Decoder
     {
         enum Flags
@@ -228,6 +267,7 @@ namespace emu::SM83
         TCycleState _tCycleState;
 
         MCycle _currMCycle;
+        InstructionTable _table;
     };
 
     struct CPU
@@ -242,5 +282,5 @@ namespace emu::SM83
     void Boot(CPU* cpu, uint16_t initSP, uint16_t initPC);
     void Tick(CPU* cpu, MemoryController& memCtrl, uint32_t cycles);
 
-    const char* GetOpcodeName(uint8_t opCode);
+    const char* GetOpcodeName(InstructionTable table, uint8_t opCode);
 }

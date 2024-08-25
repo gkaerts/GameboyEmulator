@@ -17,7 +17,6 @@ bool IsTestableOpCode(uint8_t opCode)
     case 0x76:  // HALT
     case 0xF3:  // DI
     case 0xFB:  // EI
-    case 0xCB:  // Prefix (unimplemented)
 
     // Invalid Opcodes
     case 0xD3:
@@ -107,12 +106,12 @@ TEST_P(OpCodeTest, TestOpCode)
         return;
     }
 
-    OPCODE_TEST_OUT << "OP - " << emu::SM83::GetOpcodeName(opCode) << std::endl;
+    OPCODE_TEST_OUT << "OP - " << emu::SM83::GetOpcodeName(emu::SM83::InstructionTable::Default, opCode) << std::endl;
 
     for (const json& test : _testData)
     {
         std::string testName = test["name"];
-        //OPCODE_TEST_OUT << testName << std::endl;
+        OPCODE_TEST_OUT << testName << std::endl;
         //if (testName == "f8 b8 30")
         //    __debugbreak();
 
@@ -170,6 +169,7 @@ INSTANTIATE_TEST_SUITE_P(
     SM83, 
     OpCodeTest, 
     testing::Range<uint16_t>(0x00, 0x100),
+    //testing::Values<uint16_t>(0xCB),
     [](const testing::TestParamInfo<OpCodeTest::ParamType>& info) {
         std::string name = "OpCode_0xFF";
         std::snprintf(name.data(), name.length() + 1, "OpCode_0x%02X", info.param);
