@@ -45,10 +45,7 @@ class OpCodeTest : public testing::TestWithParam<uint16_t>
 
         virtual void SetUp() override
         {
-            _memory.resize(64 * 1024 * 1024);
-            _memCtrl = {
-                ._memory = _memory.data()
-            };
+            _memCtrl = emu::SM83::MakeTestMemoryController();
 
             if (IsTestableOpCode(uint8_t(GetParam())))
             {
@@ -65,7 +62,6 @@ class OpCodeTest : public testing::TestWithParam<uint16_t>
         
         emu::SM83::CPU _cpu;
         emu::SM83::MemoryController _memCtrl;
-        std::vector<uint8_t> _memory;
         json _testData;
 };
 
@@ -73,7 +69,7 @@ class OpCodeTest : public testing::TestWithParam<uint16_t>
 
 #define OPCODE_TEST_OUT std::cout << "[          ] "
 
-void SetCPUState(emu::SM83::CPU& cpu, const json& state, std::vector<uint8_t>& memory, uint8_t ir)
+void SetCPUState(emu::SM83::CPU& cpu, const json& state, emu::SM83::MemoryController& memCtrl, uint8_t ir)
 {
     cpu._registers._reg8.A = state["a"];
     cpu._registers._reg8.B = state["b"];
@@ -94,7 +90,8 @@ void SetCPUState(emu::SM83::CPU& cpu, const json& state, std::vector<uint8_t>& m
     {
         size_t location = ramEntry[0];
         uint8_t value = ramEntry[1];
-        memory[location] = value;
+        
+        memCtrl._memory[location] = value;
     }
 }
 
@@ -116,7 +113,7 @@ TEST_P(OpCodeTest, TestOpCode)
         //    __debugbreak();
 
         emu::SM83::Boot(&_cpu, 0, 0);
-        SetCPUState(_cpu, test["initial"], _memory, opCode);
+        SetCPUState(_cpu, test["initial"], _memCtrl, opCode);
 
         const json& cycles = test["cycles"];
         for (const json& cycle : cycles)
@@ -160,7 +157,7 @@ TEST_P(OpCodeTest, TestOpCode)
         const json& ramState = finalState["ram"];
         for (const json& ramEntry : ramState)
         {
-            ASSERT_EQ(_memory[size_t(ramEntry[0])], uint8_t(ramEntry[1]));
+            ASSERT_EQ(_memCtrl._memory[size_t(ramEntry[0])], uint8_t(ramEntry[1]));
         }
     }
 }
