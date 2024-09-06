@@ -22,6 +22,40 @@
         "cwd": "${workspaceFolder}",
         "environment": [],
         "console": "integratedTerminal"
+    },
+
+    {
+        "name": "Run App - Debug",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/win64/Debug/emulatorApp.exe",
+        "args": ["${input:romPath}"],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "console": "integratedTerminal"
+    },
+
+    {
+        "name": "Run App - Release",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/win64/Release/emulatorApp.exe",
+        "args": ["${input:romPath}"],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "console": "integratedTerminal"
+    }
+    ],
+
+    "inputs": [
+    {
+      "id": "romPath",
+      "type": "pickString",
+      "options": ["roms/dmg-acid2.gb", "roms/tetris.gb", "roms/drmario.gb", "roms/cpu_instrs.gb", ""],
+      "description": "ROM file to load",
+      "default": ""
     }
     ]
 }

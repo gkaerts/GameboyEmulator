@@ -1,7 +1,8 @@
 #include "SM83.hpp"
 #include "ALU.hpp"
 #include "OpCodes.hpp"
-#include "memory.hpp"
+#include "MMU.hpp"
+#include "DMGBoot.hpp"
 
 #include <cstring>
 #include <initializer_list>
@@ -65,11 +66,22 @@ namespace emu::SM83
             regs._reg8.F &= mask;
         }
 
+        constexpr const uint16_t IO_REG_IE = 0xFFFF;
+        constexpr const uint16_t IO_REG_IF = 0xFF0F;
+
+
         void ProcessCurrentMCycle(
             IO& io, 
             Registers& regs,
-            Decoder& decoder)
+            Decoder& decoder,
+            PeripheralIO& pIO)
         {
+            if ((decoder._flags & Decoder::DF_ExecutionHalted) && decoder._tCycleState < T4_0)
+            {
+                decoder._tCycleState = NextTCycle(decoder._tCycleState);
+                return;
+            }
+
             switch (decoder._tCycleState)
             {
                 case T1_0:
@@ -95,10 +107,10 @@ namespace emu::SM83
                             decoder._currMCycle._memOp = fetchCyle._memOp;
                         }
                         io._outPins.M1 = 1;
-                        decoder._nextMCycleIndex = 0;
 
                         // Revert to using default instruction table
                         decoder._table = InstructionTable::Default;
+                        decoder._nextMCycleIndex = 0;
                     }
                     else
                     {
@@ -251,11 +263,11 @@ namespace emu::SM83
 
                     if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_EnableInterrupts)
                     {
-                        regs._reg8.IE = 1;
+                        regs._reg8.IME = 1;
                     }
                     else if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_DisableInterrupts)
                     {
-                        regs._reg8.IE = 0;
+                        regs._reg8.IME = 0;
                     }
 
                     // Conditional checks
@@ -264,7 +276,7 @@ namespace emu::SM83
                         (decoder._currMCycle._misc._flags & MCycle::Misc::MF_ConditionCheckNC) && !(regs._reg8.F & SF_Carry) ||
                         (decoder._currMCycle._misc._flags & MCycle::Misc::MF_ConditionCheckNZ) && !(regs._reg8.F & SF_Zero))
                     {
-                        decoder._nextMCycleIndex = decoder._currMCycle._misc._optValue;
+                        decoder._nextMCycleIndex = uint8_t(decoder._currMCycle._misc._optValue);
                     }
                 }
                     break;
@@ -277,6 +289,9 @@ namespace emu::SM83
                 }
                     break;
                 case T4_0:
+                {
+                    
+                }
                     break;
                 case T4_1:
                 {
@@ -288,6 +303,45 @@ namespace emu::SM83
                     if (decoder._currMCycle._misc._flags & MCycle::Misc::MF_HaltExecution)
                     {
                         decoder._flags |= Decoder::DF_ExecutionHalted;
+                    }
+
+                    // HACK! Handle interrupts
+                    if (decoder._nextMCycleIndex == 0)
+                    {
+                        uint8_t IE_IF = (pIO.IE & pIO.IF) & 0x1F;
+                        if (IE_IF != 0)
+                        {
+                            if (regs._reg8.IME)
+                            {
+                                // Kind of a hack to hijack the instruction register, but should be harmless?
+                                if (IE_IF & INT_BIT_VBLANK)
+                                {
+                                    regs._reg8.IR = INT_VBLANK;
+                                }
+                                else if (IE_IF & INT_BIT_STAT)
+                                {
+                                    regs._reg8.IR = INT_STAT;
+                                }
+                                else if (IE_IF & INT_BIT_TIMER)
+                                {
+                                    regs._reg8.IR = INT_TIMER;
+                                }
+                                else if (IE_IF & INT_BIT_SERIAL)
+                                {
+                                    regs._reg8.IR = INT_SERIAL;
+                                }
+                                else if (IE_IF & INT_BIT_JOYPAD)
+                                {
+                                    regs._reg8.IR = INT_JOYPAD;
+                                }
+
+                                decoder._table = InstructionTable::Interrupt;
+                                pIO.IF = 0;
+                            }
+
+                            // Always resume when an interrupt could get triggered, even if interrupts aren't enabled
+                            decoder._flags &= ~Decoder::DF_ExecutionHalted;
+                        }
                     }
                 }
                     break;
@@ -303,31 +357,46 @@ namespace emu::SM83
         }
     }
 
-    void Boot(CPU* cpu, uint16_t initSP, uint16_t initPC)
+    void BootCPU(CPU& cpu, uint16_t initSP, uint16_t initPC, uint8_t initBootCtrl)
     {
         // Clear and set up registers
-        std::memset(&cpu->_registers, 0, sizeof(cpu->_registers));
+        std::memset(&cpu._registers, 0, sizeof(cpu._registers));
+
+        // Clear peripheral IO
+        std::memset(&cpu._peripheralIO, 0, sizeof(cpu._peripheralIO));
         
-        cpu->_registers._reg16.SP = initSP;
-        cpu->_registers._reg16.PC = initPC;
+        cpu._registers._reg16.SP = initSP;
+        cpu._registers._reg16.PC = initPC;
 
         // Set up IO state
-        cpu->_io._address = 0;
-        cpu->_io._data = 0;
-        cpu->_io._outPins.MRQ = 0;
-        cpu->_io._outPins.RD = 0;
-        cpu->_io._outPins.WR = 0;
+        cpu._io._address = 0;
+        cpu._io._data = 0;
+        cpu._io._outPins.MRQ = 0;
+        cpu._io._outPins.RD = 0;
+        cpu._io._outPins.WR = 0;
 
         // Set up decoder state
-        cpu->_decoder._nextMCycleIndex = 0;
-        cpu->_decoder._tCycleState = T1_0;
-        cpu->_decoder._flags = 0;
-        cpu->_decoder._table = InstructionTable::Default;
+        cpu._decoder._nextMCycleIndex = 0;
+        cpu._decoder._tCycleState = T1_0;
+        cpu._decoder._flags = 0;
+        cpu._decoder._table = InstructionTable::Default;
+
+        cpu._tcycle = 0;
+
+        // Load boot ROM
+        cpu._peripheralIO.BOOT_CTRL = initBootCtrl;
+        std::memcpy(cpu._bootROM, DMG_BOOT_ROM, sizeof(DMG_BOOT_ROM));
     }
 
-    void Tick(CPU* cpu, MemoryController& memCtrl, uint32_t cycles)
+    constexpr const uint16_t ADDR_PERIPHERAL_IO = 0xFF00; 
+    void MapPeripheralIOMemory(CPU& cpu, MMU& mmu)
     {
-        if (cpu->_decoder._flags & Decoder::DF_ExecutionStopped)
+        MapMemoryRegion(mmu, ADDR_PERIPHERAL_IO, sizeof(PeripheralIO), reinterpret_cast<uint8_t*>(&cpu._peripheralIO), 0);
+    }
+
+    void TickCPU(CPU& cpu, MMU& mmu, uint32_t cycles)
+    {
+        if (cpu._decoder._flags & Decoder::DF_ExecutionStopped)
         {
             return;
         }
@@ -337,16 +406,93 @@ namespace emu::SM83
         // The "execution" M-cycles (i.e. not M1) can overlap with the fetch of the next opcode
         for (uint32_t i = 0; i < cycles; ++i)
         {
-            if (cpu->_decoder._flags & Decoder::DF_ExecutionHalted)
+            // Redirect $0000 - $00FF to the boot rom if needed
+            uint8_t BOOT_CTRL = cpu._peripheralIO.BOOT_CTRL;
+            if (!BOOT_CTRL)
             {
-                continue;
+                RedirectZeroSegment(mmu, cpu._bootROM);
             }
 
-            // Two half ticks!
-            ProcessCurrentMCycle(cpu->_io, cpu->_registers, cpu->_decoder);
-            ProcessCurrentMCycle(cpu->_io, cpu->_registers, cpu->_decoder);
+            // Tick clock
+            uint16_t* SYSCLCK = reinterpret_cast<uint16_t*>(&cpu._peripheralIO.SYSCLCK);
+            cpu._tcycle++;
+            if ((cpu._tcycle % 4) == 0)
+            {
+                (*SYSCLCK)++;      
 
-            TickMemoryController(memCtrl, cpu->_io);
+                // Tick programmable timer
+                const uint8_t BIT_TIMA_ENABLED = (1 << 2);
+                if ((cpu._peripheralIO.TAC & BIT_TIMA_ENABLED) != 0)
+                {
+                    const uint16_t TIMA_FREQUENCIES[] =
+                    {
+                        256,
+                        4,
+                        16,
+                        64
+                    };
+
+                    uint16_t frequency = TIMA_FREQUENCIES[cpu._peripheralIO.TAC & 0x03];
+                    if (((*SYSCLCK) % frequency) == 0)
+                    {
+                        cpu._peripheralIO.TIMA++;
+                        if (cpu._peripheralIO.TIMA == 0)
+                        {
+                            cpu._peripheralIO.TIMA = cpu._peripheralIO.TMA;
+                            cpu._peripheralIO.IF |= INT_BIT_TIMER;
+                        }
+                    }
+                }
+            }
+
+
+            uint8_t DIV = cpu._peripheralIO.DIV;
+
+            // Two half ticks!
+            ProcessCurrentMCycle(cpu._io, cpu._registers, cpu._decoder, cpu._peripheralIO);
+            ProcessCurrentMCycle(cpu._io, cpu._registers, cpu._decoder, cpu._peripheralIO);
+
+            // MMU interaction
+            if (cpu._io._outPins.MRQ)
+            {
+                // Put memory onto data bus?
+                if (cpu._io._outPins.RD)
+                {
+                    cpu._io._data = MMURead(mmu, cpu._io._address);
+                }
+
+                // Put data bus into memory?
+                else if (cpu._io._outPins.WR)
+                {
+                    MMUWrite(mmu, cpu._io._address, cpu._io._data);
+                }
+            }
+
+            // Handle timer reset on write
+            if (DIV != cpu._peripheralIO.DIV)
+            {
+                (*SYSCLCK) = 0;
+            }
+
+            // Handle boot control register change
+            if (BOOT_CTRL == 0 && cpu._peripheralIO.BOOT_CTRL != 0)
+            {
+                RemoveZeroSegmentRedirect(mmu);
+            }
+
+            // And make it read-only from this point onward
+            if (BOOT_CTRL != 0)
+            {
+                cpu._peripheralIO.BOOT_CTRL = BOOT_CTRL;
+            }
+
+            // Unused IO registers need to always be 0xFF
+            memset(cpu._peripheralIO.UNKNOWN0, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN0));
+            memset(cpu._peripheralIO.UNKNOWN1, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN1));
+            memset(cpu._peripheralIO.UNKNOWN2, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN2));
+            memset(cpu._peripheralIO.UNKNOWN3, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN3));
+            memset(cpu._peripheralIO.UNKNOWN4, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN4));
+            memset(cpu._peripheralIO.UNKNOWN5, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN5));
         }
     }
 }

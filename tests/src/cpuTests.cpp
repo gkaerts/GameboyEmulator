@@ -2,7 +2,7 @@
 #include "nlohmann/json.hpp"
 
 #include "SM83.hpp"
-#include "memory.hpp"
+#include "MMU.hpp"
 
 #include <vector>
 #include <fstream>
@@ -45,7 +45,8 @@ class OpCodeTest : public testing::TestWithParam<uint16_t>
 
         virtual void SetUp() override
         {
-            _memCtrl = emu::SM83::MakeTestMemoryController();
+            _memory = std::make_unique<uint8_t[]>(64 * 1024);
+            emu::SM83::MapMemoryRegion(_mmu, 0, 64 * 1024, _memory.get(), 0);
 
             if (IsTestableOpCode(uint8_t(GetParam())))
             {
@@ -61,7 +62,8 @@ class OpCodeTest : public testing::TestWithParam<uint16_t>
         }
         
         emu::SM83::CPU _cpu;
-        emu::SM83::MemoryController _memCtrl;
+        emu::SM83::MMU _mmu;
+        std::unique_ptr<uint8_t[]> _memory;
         json _testData;
 };
 
@@ -69,7 +71,7 @@ class OpCodeTest : public testing::TestWithParam<uint16_t>
 
 #define OPCODE_TEST_OUT std::cout << "[          ] "
 
-void SetCPUState(emu::SM83::CPU& cpu, const json& state, emu::SM83::MemoryController& memCtrl, uint8_t ir)
+void SetCPUState(emu::SM83::CPU& cpu, const json& state, uint8_t* memory, uint8_t ir)
 {
     cpu._registers._reg8.A = state["a"];
     cpu._registers._reg8.B = state["b"];
@@ -91,7 +93,7 @@ void SetCPUState(emu::SM83::CPU& cpu, const json& state, emu::SM83::MemoryContro
         size_t location = ramEntry[0];
         uint8_t value = ramEntry[1];
         
-        memCtrl._memory[location] = value;
+        memory[location] = value;
     }
 }
 
@@ -112,13 +114,15 @@ TEST_P(OpCodeTest, TestOpCode)
         //if (testName == "f8 b8 30")
         //    __debugbreak();
 
-        emu::SM83::Boot(&_cpu, 0, 0);
-        SetCPUState(_cpu, test["initial"], _memCtrl, opCode);
+        emu::SM83::BootCPU(_cpu, 0, 0, 1);
+
+        
+        SetCPUState(_cpu, test["initial"], _memory.get(), opCode);
 
         const json& cycles = test["cycles"];
         for (const json& cycle : cycles)
         {
-            emu::SM83::Tick(&_cpu, _memCtrl, 4);
+            emu::SM83::TickCPU(_cpu, _mmu, 4);
 
             if (!cycle.is_null())
             {
@@ -157,7 +161,7 @@ TEST_P(OpCodeTest, TestOpCode)
         const json& ramState = finalState["ram"];
         for (const json& ramEntry : ramState)
         {
-            ASSERT_EQ(_memCtrl._memory[size_t(ramEntry[0])], uint8_t(ramEntry[1]));
+            ASSERT_EQ(_memory[size_t(ramEntry[0])], uint8_t(ramEntry[1]));
         }
     }
 }
@@ -172,3 +176,108 @@ INSTANTIATE_TEST_SUITE_P(
         std::snprintf(name.data(), name.length() + 1, "OpCode_0x%02X", info.param);
         return name;
     });
+
+TEST(UseCaseTests, MemCopyTest)
+{
+    std::unique_ptr<uint8_t[]> RAM = std::make_unique<uint8_t[]>(64 * 1024);
+
+    emu::SM83::MMU mmu;
+    emu::SM83::MapMemoryRegion(mmu, 0, 64 * 1024, RAM.get(), 0);
+
+
+    emu::SM83::CPU cpu;
+    emu::SM83::BootCPU(cpu, 0, 0, 1);
+    emu::SM83::MapPeripheralIOMemory(cpu, mmu);
+
+    // Payload
+    RAM[0x1000] = 0xF0;
+    RAM[0x1001] = 0xF1;
+    RAM[0x1002] = 0xF2;
+    RAM[0x1003] = 0xF3;
+    RAM[0x1004] = 0xF4;
+    RAM[0x1005] = 0xF5;
+    RAM[0x1006] = 0xF6;
+    RAM[0x1007] = 0xF7;
+
+    // Program
+    const uint8_t program[] =
+    {
+        0x31, 0xFE, 0xFF, // 0x00: LD SP, $fffe
+        0xAF,             // 0x03: XOR A
+        0x11, 0x00, 0x10, // 0x04: LD DE, 0x1000
+        0x21, 0x00, 0x20, // 0x07: LD HL, 0x2000
+        0x06, 0x08,       // 0x0A: LD B, 0x08
+        0xCD, 0x12, 0x00, // 0x0C: CALL 0x0012
+        0xC3, 0x00, 0x30, // 0x0F: JP 0x3000
+
+        0x1A,             // 0x12: LD A, (DE)
+        0x22,             // 0x13: LD (HL+), A
+        0x1C,             // 0x14: INC E
+        0x05,             // 0x15: DEC B
+        0xC2, 0x12, 0x0,  // 0x16: JP NZ 0x0012
+        0xC9,             // 0x19: RET
+        0x00,             // 0x20: NOP
+
+    };
+    memcpy(RAM.get(), program, sizeof(program));
+
+    for (int i = 0; i < 1000; ++i)
+    {
+        emu::SM83::TickCPU(cpu, mmu, 4);
+
+        if (cpu._decoder._nextMCycleIndex == 0)
+        {
+            std::printf("%s\n", emu::SM83::GetOpcodeName(cpu._decoder._table, cpu._registers._reg8.IR));
+        }
+    }
+
+    EXPECT_EQ(RAM[0x2000], 0xF0);
+}
+
+TEST(UseCaseTests, InterruptTests)
+{
+    std::unique_ptr<uint8_t[]> RAM = std::make_unique<uint8_t[]>(64 * 1024);
+
+    constexpr const uint8_t program[] =
+    {
+        0x31, 0xFE, 0xFF, // 0x00: LD SP, $fffe         - Set up stack
+        0x3E, 0x01,       // 0x03: LD A, 0x01           - Prepare 0x01 into A
+        0xE0, 0x0F,       // 0x05: LD ($FF00+0F), A     - Pull A into IF register
+        0xE0, 0xFF,       // 0x07: LD ($FF00+FF), A     - Pull A into IE register
+        0xFB,             // 0x09: EI                   - Enable interrupts, should jump to 0x40 as interrupt handler
+        0x00,             // 0x0A: NOP
+        0xC3, 0x0A, 0x00, // 0x0B: JP $000A             - Infinite loop
+
+
+        // Sea of NOPs until 0x40
+        0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF3,
+
+        0x3E, 0x2F,         // 0x40: LD A, 0x2F         - Load dummy value into A as proof we hit the interrupt
+        0xD9,               // 0x42: RETI               - Return and enable interrupts
+    };
+    memcpy(RAM.get(), program, sizeof(program));
+
+    emu::SM83::MMU mmu;
+    emu::SM83::MapMemoryRegion(mmu, 0, 64 * 1024, RAM.get(), 0);
+
+
+    emu::SM83::CPU cpu;
+    emu::SM83::BootCPU(cpu, 0, 0, 1);
+    emu::SM83::MapPeripheralIOMemory(cpu, mmu);
+    
+    for (int i = 0; i < 1000; ++i)
+    {
+        if (cpu._decoder._nextMCycleIndex == 0)
+        {
+            std::printf("$%04x: %s\n", cpu._registers._reg16.PC, emu::SM83::GetOpcodeName(cpu._decoder._table, cpu._registers._reg8.IR));
+        }
+
+        emu::SM83::TickCPU(cpu, mmu, 4);
+    }
+
+    EXPECT_EQ(cpu._registers._reg8.A, 0x2F);
+    EXPECT_EQ(cpu._registers._reg8.IME, 1);
+}

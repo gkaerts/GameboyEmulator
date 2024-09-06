@@ -34,13 +34,14 @@ namespace emu::SM83
 
         Instruction INSTRUCTIONS[0x100] = {};
         Instruction PREFIX_INSTRUCTIONS[0x100] = {};
+        Instruction INTERRUPT_INSTRUCTIONS[0x100] = {};
 
         const Instruction* INSTRUCTION_TABLES[] = 
         {
             INSTRUCTIONS,
-            PREFIX_INSTRUCTIONS
+            PREFIX_INSTRUCTIONS,
+            INTERRUPT_INSTRUCTIONS
         };
-
 
         constexpr const RegisterOperand REGISTER_OPERAND_LUT[]
         {
@@ -189,7 +190,7 @@ namespace emu::SM83
             };
         }
 
-        MCycle::Misc MakeMisc(uint16_t miscFlags, RegisterOperand operand = RegisterOperand::None, uint8_t optValue = 0)
+        MCycle::Misc MakeMisc(uint16_t miscFlags, RegisterOperand operand = RegisterOperand::None, uint16_t optValue = 0)
         {
             return {
                 ._flags = miscFlags,
@@ -624,7 +625,7 @@ namespace emu::SM83
         {
             // HALT
             INSTRUCTIONS[0x76] = MakeInstruction({
-                MakeCycle(NoALU(), NoIDU(), NoMem(), MakeMisc(MCycle::Misc::MF_HaltExecution))
+                MakeCycle(NoALU(), MakeIDU(IDUOp::Nop, RegisterOperand::RegPC), MakeMemRead(RegisterOperand::RegPC, RegisterOperand::RegIR), MakeMisc(MCycle::Misc::MF_HaltExecution))
             });
         }
 
@@ -1115,8 +1116,32 @@ namespace emu::SM83
             }
         }
 
+        void PopulateInterruptInstructions()
+        {
+            auto MakeInterruptInstruction = [](uint8_t interrupt)
+            {
+                return MakeInstruction(
+                {
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegPC), NoMem(), MakeMisc(MCycle::Misc::MF_DisableInterrupts)),
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), NoMem()),
+                    MakeCycle(NoALU(), MakeIDU(IDUOp::Dec, RegisterOperand::RegSP), MakeMemWrite(RegisterOperand::RegPCH, RegisterOperand::RegSP)),
+                    MakeCycle(NoALU(), NoIDU(), MakeMemWrite(RegisterOperand::RegPCL, RegisterOperand::RegSP), MakeMisc(MCycle::Misc::MF_WriteValueToWideRegister, RegisterOperand::RegPC, interrupt)),
+                    MakeCycle(NoALU(), NoIDU(), NoMem())
+                });
+            };
+
+            INTERRUPT_INSTRUCTIONS[INT_VBLANK] = MakeInterruptInstruction(INT_VBLANK);
+            INTERRUPT_INSTRUCTIONS[INT_STAT] = MakeInterruptInstruction(INT_STAT);
+            INTERRUPT_INSTRUCTIONS[INT_TIMER] = MakeInterruptInstruction(INT_TIMER);
+            INTERRUPT_INSTRUCTIONS[INT_SERIAL] = MakeInterruptInstruction(INT_SERIAL);
+            INTERRUPT_INSTRUCTIONS[INT_JOYPAD] = MakeInterruptInstruction(INT_JOYPAD);
+        }
+
         void PopulateInstructions()
         {
+            // Interrupt handling
+            PopulateInterruptInstructions();
+
             // NOP
             INSTRUCTIONS[0x00] = MakeInstruction({
                     MakeCycle(NoALU(), NoIDU(), NoMem())
@@ -1156,6 +1181,8 @@ namespace emu::SM83
             }
 
         } OPCODE_STATIC_INIT;
+
+        
     }
 
     const MCycle& GetFetchMCycle() { return FETCH_MCYCLE; };
@@ -1175,6 +1202,33 @@ namespace emu::SM83
 
     const char* GetOpcodeName(InstructionTable table, uint8_t opCode)
     {
-        return OPCODE_NAME_TABLES[int(table)][opCode];
+        if (table != InstructionTable::Interrupt)
+        {
+            return OPCODE_NAME_TABLES[int(table)][opCode];
+        }
+
+        switch (opCode)
+        {
+        case 0x40:
+            return "INT_$40";
+            break;
+        case 0x48:
+            return "INT_$48";
+            break;
+        case 0x50:
+            return "INT_$50";
+            break;
+        case 0x58:
+            return "INT_$58";
+            break;
+        case 0x60:
+            return "INT_$60";
+            break;
+        default:
+            break;
+        }
+
+        EMU_ASSERT(0);
+        return "UNKNOWN";
     }
 }

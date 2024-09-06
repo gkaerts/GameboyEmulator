@@ -81,7 +81,12 @@
         "xloctime": "cpp",
         "xstddef": "cpp",
         "csignal": "cpp",
-        "shared_mutex": "cpp"
+        "shared_mutex": "cpp",
+        "codecvt": "cpp",
+        "numeric": "cpp",
+        "random": "cpp",
+        "ranges": "cpp",
+        "valarray": "cpp"
     },
     "C_Cpp.default.compilerPath": "cl.exe"
 }
