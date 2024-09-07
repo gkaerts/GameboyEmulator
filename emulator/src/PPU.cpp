@@ -1,6 +1,8 @@
 
 #include "PPU.hpp"
 #include "SM83.hpp"
+#include <intrin.h>
+#include <algorithm>
 
 namespace emu::SM83
 {
@@ -52,27 +54,100 @@ namespace emu::SM83
         };
         static_assert(sizeof(LCDControl) == sizeof(uint8_t));
 
-        template <typename PixelType>
-        void PixelFIFOPush(PixelFIFO<PixelType>& fifo, PixelType data)
+        bool PixelFIFOEmpty(PixelFIFO& fifo)
         {
-            EMU_ASSERT(fifo._size < 8)
-            fifo._pixels[fifo._size++] = data;
+            return !fifo._count;
         }
 
-        template <typename PixelType>
-        PixelType PixelFIFOPop(PixelFIFO<PixelType>& fifo)
+        bool PixelFIFOFull(PixelFIFO& fifo)
         {
-            EMU_ASSERT(fifo._size > 0 && "Pixel FIFO empty!");
-            PixelType val = fifo._pixels[0];
+            return fifo._count == 8;
+        }
 
-            for (uint8_t i = 0; i < fifo._size - 1; ++i)
+        void PixelFIFOClear(PixelFIFO& fifo)
+        {
+            fifo._count = 0;
+        }
+
+        void PixelFIFOPushBGTile(PixelFIFO& fifo, uint8_t tileLow, uint8_t tileHigh)
+        {
+            EMU_ASSERT(PixelFIFOEmpty(fifo));
+
+            fifo._indicesLow = tileLow;
+            fifo._indicesHigh = tileHigh;
+            fifo._paletteIDsLow = 0;
+            fifo._paletteIDsHigh = 0;
+            fifo._priorities = 0;
+            fifo._count += 8;
+        }
+
+        constexpr const uint8_t PALETTE_ID_BGP = 0;
+        constexpr const uint8_t PALETTE_ID_OBP0 = 1;
+        constexpr const uint8_t PALETTE_ID_OBP1 = 2;
+
+        void PixelFIFOPushSpriteTile(PixelFIFO& fifo, uint8_t tileLow, uint8_t tileHigh, uint8_t palette, uint8_t priority)
+        {
+            uint8_t priorityBits = (priority ? 0xFF : 0x00);
+            uint8_t paletteBitsHigh = (palette & 0x02) ? 0xFF : 0x00;
+            uint8_t paletteBitsLow = (palette & 0x01) ? 0xFF : 0x00;
+
+            uint8_t priorityDiff = fifo._priorities ^ priorityBits;
+            uint8_t pixelsToOverwrite = ~(fifo._indicesLow | fifo._indicesHigh) | (priorityDiff & ~priorityBits);
+
+            fifo._indicesLow = (fifo._indicesLow & ~pixelsToOverwrite) | (pixelsToOverwrite & tileLow);
+            fifo._indicesHigh = (fifo._indicesHigh & ~pixelsToOverwrite) | (pixelsToOverwrite & tileHigh);
+            fifo._paletteIDsLow = (fifo._paletteIDsLow & ~pixelsToOverwrite) | (pixelsToOverwrite & paletteBitsLow);
+            fifo._paletteIDsHigh = (fifo._paletteIDsHigh & ~pixelsToOverwrite) | (pixelsToOverwrite & paletteBitsHigh);
+            fifo._priorities = (fifo._priorities & ~pixelsToOverwrite) | (pixelsToOverwrite & priorityBits);
+            fifo._count = 8;
+        }
+
+        void ShiftFIFO(PixelFIFO& fifo)
+        {
+            fifo._indicesHigh = fifo._indicesHigh << 1;
+            fifo._indicesLow = fifo._indicesLow << 1;
+            fifo._paletteIDsHigh = fifo._paletteIDsHigh << 1;
+            fifo._paletteIDsLow = fifo._paletteIDsLow << 1;
+            fifo._count--;
+        }
+
+        uint8_t PixelFIFOPop(PixelFIFO& bgFifo, PixelFIFO& spriteFifo, uint8_t BGP, uint8_t OBP0, uint8_t OBP1)
+        {
+            EMU_ASSERT(!PixelFIFOEmpty(bgFifo));
+
+            const uint8_t palettes[] =
             {
-                fifo._pixels[i] = fifo._pixels[i + 1];
+                BGP, OBP0, OBP1
+            };
+
+            // Build visible sprite pixel mask
+            uint8_t opaqueSpritePixels = spriteFifo._indicesLow | spriteFifo._indicesHigh;
+            uint8_t spritesHavePriority = ~spriteFifo._priorities;
+            uint8_t transparentBGPixels = ~(bgFifo._indicesLow | bgFifo._indicesHigh);
+            uint8_t visibleSpritePixels = opaqueSpritePixels & (spritesHavePriority | transparentBGPixels);
+
+            // Build merged FIFO
+            uint8_t indicesHigh = (visibleSpritePixels & spriteFifo._indicesHigh) | (~visibleSpritePixels & bgFifo._indicesHigh);
+            uint8_t indicesLow = (visibleSpritePixels & spriteFifo._indicesLow) | (~visibleSpritePixels & bgFifo._indicesLow);
+            uint8_t paletteIDsHigh = (visibleSpritePixels & spriteFifo._paletteIDsHigh) | (~visibleSpritePixels & bgFifo._paletteIDsHigh);
+            uint8_t paletteIDsLow = (visibleSpritePixels & spriteFifo._paletteIDsLow) | (~visibleSpritePixels & bgFifo._paletteIDsLow);
+
+            uint8_t colorIdx = 
+                (indicesHigh & 0x80) >> 6 |
+                (indicesLow & 0x80) >> 7;
+
+            uint8_t paletteID = 
+                (paletteIDsHigh & 0x80) >> 6 |
+                (paletteIDsLow & 0x80) >> 7;
+
+            ShiftFIFO(bgFifo);
+
+            if (!PixelFIFOEmpty(spriteFifo))
+            {
+                ShiftFIFO(spriteFifo);
             }
 
-            fifo._size--;
-            fifo._pixels[fifo._size] = {};
-
+            uint8_t val = (palettes[paletteID] >> (colorIdx * 2)) & 0x03;
             return val;
         }
 
@@ -115,28 +190,24 @@ namespace emu::SM83
             return VRAMRead(vram, addr + offset);
         }
 
-        constexpr const uint8_t INVALID_SPRITE_IDX = 0xFF;
-        uint8_t FindNextSpriteToRender(uint8_t startSpriteIdx, uint8_t pixelXPos, const ObjectFetcher& objFetch)
+        uint16_t FindVisibleSprites(uint8_t pixelXPos, const ObjectFetcher& objFetch)
         {
-            for (uint8_t i = startSpriteIdx; i < objFetch._spriteCount; ++i)
+            uint16_t visibleSprites = 0;
+            for (uint8_t i = 0; i < objFetch._spriteCount; ++i)
             {
-                // if (i >= 1)
-                //     break;
-
-                if (pixelXPos + 8 >= objFetch._spriteList[i]._posX &&
-                    pixelXPos + 8 < objFetch._spriteList[i]._posX + 8)
+                if (pixelXPos + 8 == objFetch._spriteList[i]._posX)
                 {
-                    return i;
+                    visibleSprites |= (1 << i);
                 }
             }
 
-            return INVALID_SPRITE_IDX;
+            return visibleSprites;
         }
 
 
         void TickObjectFetcher(uint16_t currCycle, uint8_t LY, LCDControl lcdc, ObjectFetcher& objFetch, const uint8_t* oam)
         {
-            if (currCycle % 2 == 1)
+            if (currCycle % 2 == 0)
             {
                 // Check a new OAM entry every two cycles
                 uint16_t addr = OAM_ADDR + (currCycle / 2) * sizeof(OAMEntry);
@@ -159,30 +230,12 @@ namespace emu::SM83
             }          
         }
 
-        bool TickPixelFIFOs(uint16_t currCycle, uint8_t SCX, uint8_t BGP, uint8_t OBP0, uint8_t OBP1, PixelFIFO<BGPixel>& bgFifo, PixelFIFO<SpritePixel>& spriteFifo, LCDControl lcdc, void* userData, FnDisplayPixelWrite displayFn)
+        bool TickPixelFIFOs(uint16_t currCycle, uint8_t SCX, uint8_t BGP, uint8_t OBP0, uint8_t OBP1, PixelFIFO& bgFifo, PixelFIFO& spriteFifo, LCDControl lcdc, void* userData, FnDisplayPixelWrite displayFn)
         {
             EMU_ASSERT(currCycle >= CYCLES_PER_OAM_SCAN && "Pixel fetch stage should not be running during OAM scan");
-            if (bgFifo._size > 0)
+            if (!PixelFIFOEmpty(bgFifo))
             {
-                BGPixel bgPixel = PixelFIFOPop(bgFifo);
-
-                uint8_t color = (BGP >> (bgPixel._colorIndex * 2)) & 0x03;
-                
-                if (spriteFifo._size > 0)
-                {
-                    SpritePixel spritePixel = PixelFIFOPop(spriteFifo);
-
-                    if ((spritePixel._colorIndex != 0 && !spritePixel._priority) || 
-                        (spritePixel._priority && bgPixel._colorIndex == 0) ||
-                        !lcdc._bits._bgWindowEnabled)
-                    {
-                        if (lcdc._bits._spriteEnabled)
-                        {
-                            uint8_t spritePalette = spritePixel._palette ?  OBP1 : OBP0;
-                            color = (spritePalette >> (spritePixel._colorIndex * 2)) & 0x03;
-                        }
-                    }
-                }
+                uint8_t color = PixelFIFOPop(bgFifo, spriteFifo, BGP, OBP0, OBP1);
 
                 // Handle horizontal scroll by discarding pixels at the start of the scanline
                 if ((currCycle - CYCLES_PER_OAM_SCAN) > (SCX % 8))
@@ -293,25 +346,12 @@ namespace emu::SM83
                 case PixelFetchStage::PushToFIFO:
                 {
                     // Only push pixels if BG FIFO is empty, otherwise keep retrying
-                    if (pixelFetch._bgFIFO._size == 0)
+                    if (PixelFIFOEmpty(pixelFetch._bgFifo))
                     {
-                        for (int pixelIdx = 7; pixelIdx >= 0; --pixelIdx)
-                        {
-                            uint8_t colorIdx = 
-                                (pixelFetch._currTileLow >> pixelIdx) << 1 |
-                                (pixelFetch._currTileHigh >> pixelIdx);
-
-                            BGPixel pix =
-                            {
-                                ._colorIndex = colorIdx,
-                                ._priority = 0, // TODO: CGB support
-                            };
-
-                            PixelFIFOPush(pixelFetch._bgFIFO, pix);
-                        }
-
+                        PixelFIFOPushBGTile(pixelFetch._bgFifo, pixelFetch._currTileLow, pixelFetch._currTileHigh);
                         pixelFetch._currTileXPos++;
                         pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
+                        pixelFetch._currTileIdx = 0;
                         fifoPopulated = true;
                     }
                 }
@@ -325,64 +365,99 @@ namespace emu::SM83
             return fifoPopulated;
         }
 
-        bool TickPixelFetcherSprite(uint16_t currCycle, uint8_t LY, uint8_t SCY, PixelFetcher& pixelFetch, ObjectFetcher& objFetch, uint8_t spriteIdx, const uint8_t* vram)
+        uint8_t ReverseBits(uint8_t b)
+        {
+            b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+            b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+            b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+            return b;
+        }
+
+        bool TickPixelFetcherSprite(uint16_t currCycle, uint8_t currPixelXPos, uint8_t LY, const LCDControl& lcdc, PixelFetcher& pixelFetch, ObjectFetcher& objFetch, uint8_t spriteIdx, const uint8_t* vram)
         {
             bool fifoPopulated = false;
-            if (currCycle % 2 == 1)
+            OAMEntry sprite = objFetch._spriteList[spriteIdx];
+            uint8_t spriteHeight = lcdc._bits._spriteSize ? 16 : 8;
+            //if (currCycle % 2 == 1)
             {
                 switch (pixelFetch._currStage)
                 {
                 case PixelFetchStage::FetchTileNumber:
                 {
-                    pixelFetch._currTileIdx = objFetch._spriteList[spriteIdx]._tileIdx;
+                    pixelFetch._currTileIdx = sprite._tileIdx;
+                    if (lcdc._bits._spriteSize > 0)
+                    {
+                        pixelFetch._currTileIdx = pixelFetch._currTileIdx & 0xFE;
+                    }
+                    
                     pixelFetch._currStage = PixelFetchStage::FetchTileDataLow;
                 }
                     break;
 
                 case PixelFetchStage::FetchTileDataLow:
                 {
-                    // Offset which row to fetch by current scanline and vertical scroll register
-                    uint16_t tileOffset = 2 * ((LY + SCY) % 8);
+                    if (currCycle % 2 == 1)
+                    {
+                        uint16_t rowIdx = (LY + 16) - sprite._posY;
+                        uint16_t tileOffset = 2 * (rowIdx % spriteHeight);
+                        if (sprite._attribs._yFlip)
+                        {
+                            tileOffset = 2 * ((spriteHeight - 1) - (rowIdx % spriteHeight));
+                        }
 
-                    uint8_t lowBits = FetchSpriteTileData(vram, pixelFetch._currTileIdx, tileOffset + 0);
-                    pixelFetch._currTileLow = lowBits;
-                    pixelFetch._currStage = PixelFetchStage::FetchTileDataHigh;
+                        uint8_t lowBits = lcdc._bits._spriteEnabled ? 
+                            FetchSpriteTileData(vram, pixelFetch._currTileIdx, tileOffset + 0) :
+                            0;
+
+                        pixelFetch._currTileLow = lowBits;
+                        if (sprite._attribs._xFlip)
+                        {
+                            pixelFetch._currTileLow = ReverseBits(pixelFetch._currTileLow);
+                        }
+
+                        pixelFetch._currStage = PixelFetchStage::FetchTileDataHigh;
+                    }
                 }
                     break;
 
                 case PixelFetchStage::FetchTileDataHigh:
                 {
-                    // Same as low bits, but offset by one byte in the fetch
-                    uint16_t tileOffset = 2 * ((LY + SCY) % 8);
+                    if (currCycle % 2 == 1)
+                    {
+                        // Same as low bits, but offset by one byte in the fetch
+                        uint16_t rowIdx = (LY + 16) - sprite._posY;
+                        uint16_t tileOffset = 2 * (rowIdx % spriteHeight);
+                        if (sprite._attribs._yFlip)
+                        {
+                            tileOffset = 2 * ((spriteHeight - 1) - (rowIdx % spriteHeight));
+                        }
 
-                    uint8_t highBits = FetchSpriteTileData(vram, pixelFetch._currTileIdx, tileOffset + 1);
-                    pixelFetch._currTileHigh = highBits;
-                    pixelFetch._currStage = PixelFetchStage::PushToFIFO;
+                        uint8_t highBits = lcdc._bits._spriteEnabled ? 
+                            FetchSpriteTileData(vram, pixelFetch._currTileIdx, tileOffset + 1) :
+                            0;
+
+                        pixelFetch._currTileHigh = highBits;
+                        if (sprite._attribs._xFlip)
+                        {
+                            pixelFetch._currTileHigh = ReverseBits(pixelFetch._currTileHigh);
+                        }
+
+                        pixelFetch._currStage = PixelFetchStage::PushToFIFO;
+                    }
                 }
                     break;
 
                 case PixelFetchStage::PushToFIFO:
                 {
-                    for (int pixelIdx = 7; pixelIdx >= 0; --pixelIdx)
-                    {
-                        uint8_t colorIdx = 
-                            (pixelFetch._currTileLow >> pixelIdx) << 1 |
-                            (pixelFetch._currTileHigh >> pixelIdx);
-
-                        SpritePixel pix =
-                        {
-                            ._colorIndex = colorIdx,
-                            ._palette = objFetch._spriteList[spriteIdx]._attribs._dmgPalette,
-                            ._priority = objFetch._spriteList[spriteIdx]._attribs._priority,
-                            ._sourceID = spriteIdx
-                        };
-
-                        pixelFetch._spriteFIFO._pixels[pixelIdx] = pix;
-                        //PixelFIFOPush(pixelFetch._spriteFIFO, pix);
-                    }
-
-                    pixelFetch._spriteFIFO._size = 8;
+                    PixelFIFOPushSpriteTile(
+                        pixelFetch._spriteFifo, 
+                        pixelFetch._currTileLow, 
+                        pixelFetch._currTileHigh,
+                        sprite._attribs._dmgPalette ? PALETTE_ID_OBP1 : PALETTE_ID_OBP0,
+                        sprite._attribs._priority);
+                
                     pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
+                    pixelFetch._visibleSpriteBits &= ~(1 << spriteIdx);
                     fifoPopulated = true;   
                 }
                     break;
@@ -393,33 +468,6 @@ namespace emu::SM83
             }
             
             return fifoPopulated;
-        }
-
-        bool TickPixelFetcher(uint16_t currCycle, uint8_t LY, uint8_t SCX, uint8_t SCY, LCDControl lcdc, PixelFetcher& pixelFetch, ObjectFetcher& objFetch, uint8_t spriteIdx, const uint8_t* vram)
-        {
-            if (pixelFetch._currMode != PixelFetcher::Mode::Sprite)
-            {
-                return TickPixelFetcherBackground(
-                    pixelFetch._currMode == PixelFetcher::Mode::Window,
-                    currCycle,
-                    LY,
-                    SCX,
-                    SCY,
-                    lcdc,
-                    pixelFetch,
-                    vram);
-            }
-            else
-            {
-                return TickPixelFetcherSprite(
-                    currCycle, 
-                    LY,
-                    SCY, 
-                    pixelFetch, 
-                    objFetch, 
-                    spriteIdx, 
-                    vram);
-            }
         }
     }
 
@@ -433,7 +481,6 @@ namespace emu::SM83
 
         ppu._currPixelXPos = 0;
         ppu._windowScanlineHitThisFrame = false;
-        ppu._nextSpriteIdx = 0;
 
         ppu._vram = vram;
         ppu._oam = oam;
@@ -468,7 +515,6 @@ namespace emu::SM83
         {
             // Make OAM inaccessible until next stage
             UnmapMemoryRegion(mmu, OAM_ADDR, OAM_SIZE);
-
             TickObjectFetcher(ppu._currCycle, pIO.LY, lcdc, ppu._objFetch, ppu._oam);
 
             if (ppu._currCycle + 1 > CYCLES_PER_OAM_SCAN)
@@ -479,6 +525,7 @@ namespace emu::SM83
                 ppu._pixelFetch._currMode = PixelFetcher::Mode::Background;
                 ppu._pixelFetch._currTileXPos = 0;
                 ppu._pixelFetch._numBGTilesFetchedInCurrScanline = 0;
+                ppu._pixelFetch._visibleSpriteBits = 0;
 
                 // Make OAM memory accessible again
                 MapMemoryRegion(mmu, OAM_ADDR, OAM_SIZE, ppu._oam, 0);
@@ -491,52 +538,68 @@ namespace emu::SM83
             // Make VRAM inaccessible until next stage
             UnmapMemoryRegion(mmu, VRAM_ADDR, VRAM_SIZE);
 
-            if (TickPixelFetcher(ppu._currCycle, pIO.LY, pIO.SCX, pIO.SCY, lcdc, ppu._pixelFetch, ppu._objFetch, ppu._nextSpriteIdx, ppu._vram))
+            if (!ppu._pixelFetch._visibleSpriteBits)
             {
-                ppu._nextSpriteIdx = FindNextSpriteToRender(ppu._nextSpriteIdx, ppu._currPixelXPos, ppu._objFetch);
-                if (ppu._nextSpriteIdx != INVALID_SPRITE_IDX)
+                uint16_t visibleSpriteBits = FindVisibleSprites(ppu._currPixelXPos, ppu._objFetch);
+                if (visibleSpriteBits)
                 {
-                    // A sprite needs to be rendered at this pixel. Reset the pixel fetcher into sprite mode
-                    ppu._pixelFetch._prevMode = ppu._pixelFetch._currMode;
-                    ppu._pixelFetch._currMode = PixelFetcher::Mode::Sprite;
+                    ppu._pixelFetch._visibleSpriteBits = visibleSpriteBits;
                     ppu._pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
-                    ppu._nextSpriteIdx++;
-                }
-                else if (ppu._pixelFetch._currMode == PixelFetcher::Mode::Sprite)
-                {
-                    ppu._pixelFetch._currMode = ppu._pixelFetch._prevMode;
-                    ppu._nextSpriteIdx = 0;
                 }
             }
 
-            // Push pixels while we're not fetching sprites
-            if (ppu._pixelFetch._currMode != PixelFetcher::Mode::Sprite)
+            // Switch into window fetching mode if needed
+            if (lcdc._bits._windowDisplayEnable &&
+                pIO.LY >= pIO.WY &&
+                ppu._currPixelXPos >= pIO.WX - 7 &&
+                ppu._pixelFetch._currMode != PixelFetcher::Mode::Window)
             {
-                if (TickPixelFIFOs(ppu._currCycle, pIO.SCX, pIO.BGP, pIO.OBP0, pIO.OBP1, ppu._pixelFetch._bgFIFO, ppu._pixelFetch._spriteFIFO, lcdc, ppu._pixelWriteUserData, ppu._pixelWriteFn))
+                ppu._pixelFetch._currMode = PixelFetcher::Mode::Window;
+                ppu._pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
+                ppu._pixelFetch._currTileXPos = 0;
+                PixelFIFOClear(ppu._pixelFetch._bgFifo);
+            }
+           
+            if (!ppu._pixelFetch._visibleSpriteBits || PixelFIFOEmpty(ppu._pixelFetch._bgFifo))
+            {   
+                TickPixelFetcherBackground(
+                    ppu._pixelFetch._currMode == PixelFetcher::Mode::Window,
+                    ppu._currCycle,
+                    pIO.LY,
+                    pIO.SCX,
+                    pIO.SCY,
+                    lcdc,
+                    ppu._pixelFetch,
+                    ppu._vram);
+            }
+            else
+            {
+                unsigned long index = 0;
+                _BitScanForward(&index, ppu._pixelFetch._visibleSpriteBits);
+                TickPixelFetcherSprite(
+                    ppu._currCycle,
+                    ppu._currPixelXPos,
+                    pIO.LY,
+                    lcdc,
+                    ppu._pixelFetch,
+                    ppu._objFetch,
+                    uint8_t(index),
+                    ppu._vram);
+            }
+
+            // Push pixels while we're not fetching sprites
+            if (!ppu._pixelFetch._visibleSpriteBits)
+            {
+                if (TickPixelFIFOs(ppu._currCycle, pIO.SCX, pIO.BGP, pIO.OBP0, pIO.OBP1, ppu._pixelFetch._bgFifo, ppu._pixelFetch._spriteFifo, lcdc, ppu._pixelWriteUserData, ppu._pixelWriteFn))
                 {
                     ppu._currPixelXPos++;
-                    
-                    // Switch into window fetching mode if needed
-                    if (lcdc._bits._windowDisplayEnable &&
-                        pIO.LY >= pIO.WY &&
-                        ppu._currPixelXPos >= pIO.WX - 7 &&
-                        ppu._pixelFetch._currMode != PixelFetcher::Mode::Window)
-                    {
-                        ppu._pixelFetch._currMode = PixelFetcher::Mode::Window;
-                        ppu._pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
-                        ppu._pixelFetch._currTileXPos = 0;
-                        ppu._pixelFetch._bgFIFO._size = 0;
-                    }
                 }
             }
 
             if (ppu._currPixelXPos >= SCREEN_WIDTH)
             {
                 // Move to HBLANK stage
-                EMU_ASSERT(ppu._currCycle >= 80 + 172 && ppu._currCycle <= 80 + 289);
-                EMU_ASSERT(ppu._pixelFetch._bgFIFO._size == 0);
-                EMU_ASSERT(ppu._pixelFetch._spriteFIFO._size == 0);
-
+                //EMU_ASSERT(ppu._currCycle >= 80 + 172 && ppu._currCycle <= 80 + 289);
                 ppu._currMode = PPU::Mode::HBlank;
 
                 if ((pIO.STAT & (1 << 3)))
@@ -593,7 +656,6 @@ namespace emu::SM83
                         (ppu._currMode == PPU::Mode::VBlank && pIO.LY == 0))
                 {
                     ppu._currMode = PPU::Mode::ObjectFetch;
-                    ppu._nextSpriteIdx = 0;
                     ppu._objFetch._spriteCount = 0;
                     
                     if ((pIO.STAT & (1 << 5)))

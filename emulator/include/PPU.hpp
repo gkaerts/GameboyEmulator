@@ -10,12 +10,12 @@ namespace emu::SM83
 
     struct OAMAttribs
     {
-        uint8_t _priority : 1;
-        uint8_t _yFlip : 1;
-        uint8_t _xFlip : 1;
-        uint8_t _dmgPalette : 1;
-        uint8_t _bank : 1;
         uint8_t _cgbPalette : 3;
+        uint8_t _bank : 1;
+        uint8_t _dmgPalette : 1;
+        uint8_t _xFlip : 1;
+        uint8_t _yFlip : 1;
+        uint8_t _priority : 1;
     };
 
     struct OAMEntry
@@ -52,11 +52,16 @@ namespace emu::SM83
         uint8_t _sourceID : 4;
     };
 
-    template <typename PixelType>
     struct PixelFIFO
     {
-        PixelType _pixels[8];
-        uint8_t _size;
+        uint8_t _indicesLow;
+        uint8_t _indicesHigh;
+
+        uint8_t _paletteIDsLow;
+        uint8_t _paletteIDsHigh;
+        uint8_t _priorities;
+
+        uint8_t _count;
     };
 
     enum class PixelFetchStage
@@ -72,8 +77,7 @@ namespace emu::SM83
         enum class Mode
         {
             Background = 0,
-            Window ,
-            Sprite,
+            Window,
         };
 
         PixelFetchStage _currStage = PixelFetchStage::FetchTileNumber;
@@ -88,8 +92,13 @@ namespace emu::SM83
         uint16_t _windowLineCounter = 0;
         uint16_t _numBGTilesFetchedInCurrScanline = 0;
 
-        PixelFIFO<BGPixel> _bgFIFO = {};
-        PixelFIFO<SpritePixel> _spriteFIFO = {};
+        uint16_t _visibleSpriteBits = 0;
+        uint8_t _lastSpriteXPos = 0;
+
+        PixelFIFO _bgFifo = {};
+        PixelFIFO _spriteFifo = {};
+
+        bool _isFetchingSprites = false;
     };
 
     using FnDisplayPixelWrite = void(*)(void*, uint8_t pixel2bpp);
@@ -112,7 +121,6 @@ namespace emu::SM83
 
         uint8_t _currPixelXPos = 0;
         bool _windowScanlineHitThisFrame = false;
-        uint8_t _nextSpriteIdx = 0;
 
         uint8_t* _vram = nullptr;
         uint8_t* _oam = nullptr;

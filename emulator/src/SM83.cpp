@@ -493,6 +493,9 @@ namespace emu::SM83
             memset(cpu._peripheralIO.UNKNOWN3, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN3));
             memset(cpu._peripheralIO.UNKNOWN4, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN4));
             memset(cpu._peripheralIO.UNKNOWN5, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN5));
+
+            // Joypad hack
+            cpu._peripheralIO.JOYP = 0xF;
         }
     }
 }

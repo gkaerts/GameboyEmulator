@@ -51,6 +51,8 @@ namespace
 
     HWND CreateWin32Window(DrawContext* drawCtxt)
     {
+        RECT windowRect = { 0, 0, emu::SM83::SCREEN_WIDTH, emu::SM83::SCREEN_HEIGHT };
+        AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
         return CreateWindowEx(
             0,
             WINDOW_CLASS_NAME,
@@ -58,8 +60,8 @@ namespace
             WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            emu::SM83::SCREEN_WIDTH,
-            emu::SM83::SCREEN_HEIGHT,
+            windowRect.right - windowRect.left,
+            windowRect.bottom - windowRect.top,
             NULL,
             NULL,
             GetModuleHandle(nullptr),
@@ -78,6 +80,9 @@ namespace
                 {
                     PAINTSTRUCT ps = {};
                     HDC hdc = BeginPaint(hwnd, &ps);
+
+                    RECT clientRect = {};
+                    GetClientRect(hwnd, &clientRect);
                     
                     BITMAPINFOHEADER bmih = {0};
                     bmih.biSize     = sizeof(BITMAPINFOHEADER);
@@ -93,9 +98,18 @@ namespace
                     BITMAPINFO dbmi = {0};
                     dbmi.bmiHeader = bmih;
 
-                    SetDIBitsToDevice(hdc, 
-                        0, 0, emu::SM83::SCREEN_WIDTH, emu::SM83::SCREEN_HEIGHT,
-                        0, 0, 0, emu::SM83::SCREEN_HEIGHT, drawCtxt->_framebuffer, &dbmi, 0);
+                    StretchDIBits(
+                        hdc,
+                        0, 0,
+                        clientRect.right - clientRect.left,
+                        clientRect.bottom - clientRect.top,
+                        0, 0,
+                        emu::SM83::SCREEN_WIDTH,
+                        emu::SM83::SCREEN_HEIGHT,
+                        drawCtxt->_framebuffer,
+                        &dbmi,
+                        DIB_RGB_COLORS,
+                        SRCCOPY);
 
                     EndPaint(hwnd, &ps);
                 }
@@ -156,23 +170,27 @@ int main(int argc, char* argv[])
 
     emu::SM83::CPU cpu;
     emu::SM83::PPU ppu;
+    emu::SM83::MMU mmu;
 
+    // Cartridge memory
     std::unique_ptr<uint8_t[]> ROMBank0 = std::make_unique<uint8_t[]>(16 * 1024);
     std::unique_ptr<uint8_t[]> ROMBank1 = std::make_unique<uint8_t[]>(16 * 1024);
-    std::unique_ptr<uint8_t[]> VRAM = std::make_unique<uint8_t[]>(8 * 1024);
+    emu::SM83::MapMemoryRegion(mmu, 0x0000, 16 * 1024, ROMBank0.get(), emu::SM83::MMRF_ReadOnly);
+    emu::SM83::MapMemoryRegion(mmu, 0x4000, 16 * 1024, ROMBank1.get(), emu::SM83::MMRF_ReadOnly);
+
+    // Video memory
+     std::unique_ptr<uint8_t[]> VRAM = std::make_unique<uint8_t[]>(8 * 1024);
+     std::unique_ptr<uint8_t[]> OAMBank = std::make_unique<uint8_t[]>(256);
+    emu::SM83::MapMemoryRegion(mmu, 0x8000, 8 * 1024, VRAM.get(), 0);
+    emu::SM83::MapMemoryRegion(mmu, 0xFE00, 256, OAMBank.get(), 0);
+
+    // Work RAM + echo
     std::unique_ptr<uint8_t[]> WRAMBank0 = std::make_unique<uint8_t[]>(4 * 1024);
     std::unique_ptr<uint8_t[]> WRAMBank1 = std::make_unique<uint8_t[]>(4 * 1024);
-    std::unique_ptr<uint8_t[]> OAMBank = std::make_unique<uint8_t[]>(256);
-
-    emu::SM83::MMU mmu;
-    emu::SM83::MapMemoryRegion(mmu, 0x0000, 16 * 1024, ROMBank0.get(), 0);
-    emu::SM83::MapMemoryRegion(mmu, 0x4000, 16 * 1024, ROMBank1.get(), 0);
-    emu::SM83::MapMemoryRegion(mmu, 0x8000, 8 * 1024, VRAM.get(), 0);
     emu::SM83::MapMemoryRegion(mmu, 0xC000, 4 * 1024, WRAMBank0.get(), 0);
     emu::SM83::MapMemoryRegion(mmu, 0xD000, 4 * 1024, WRAMBank1.get(), 0);
     emu::SM83::MapMemoryRegion(mmu, 0xE000, 4 * 1024, WRAMBank0.get(), 0);  // Echo RAM
     emu::SM83::MapMemoryRegion(mmu, 0xF000, 4 * 1024, WRAMBank1.get(), 0);  // Echo RAM
-    emu::SM83::MapMemoryRegion(mmu, 0xFE00, 256, OAMBank.get(), 0);
 
     if (argc > 1)
     {

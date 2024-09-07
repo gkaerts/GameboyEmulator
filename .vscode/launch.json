@@ -53,7 +53,7 @@
     {
       "id": "romPath",
       "type": "pickString",
-      "options": ["roms/dmg-acid2.gb", "roms/tetris.gb", "roms/drmario.gb", "roms/cpu_instrs.gb", ""],
+      "options": ["roms/dmg-acid2.gb", "roms/tetris.gb", "roms/drmario.gb", "roms/cpu_instrs.gb", "roms/pocket.gb", ""],
       "description": "ROM file to load",
       "default": ""
     }
