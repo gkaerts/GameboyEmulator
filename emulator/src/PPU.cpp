@@ -623,7 +623,7 @@ namespace emu::SM83
                     ppu._windowScanlineHitThisFrame = lcdc._bits._windowDisplayEnable && (pIO.LY >= pIO.WY) && pIO.WX < SCREEN_WIDTH;
                 }
 
-                if (ppu._windowScanlineHitThisFrame && pIO.WX < SCREEN_WIDTH)
+                if (lcdc._bits._windowDisplayEnable && ppu._windowScanlineHitThisFrame && pIO.WX < SCREEN_WIDTH)
                 {
                     ppu._pixelFetch._windowLineCounter++;
                 }
