@@ -302,7 +302,7 @@ namespace emu::SM83
         uint8_t SCX;
         uint8_t LY;             // Scanline index
         uint8_t LYC;            // Scanline compare
-        uint8_t UNKNOWN1[1];    // $FF46
+        uint8_t OAM_DMA;        // OAM DMA initiate
         uint8_t BGP;            // Background palette
         uint8_t OBP0;           // Object palette 0
         uint8_t OBP1;           // Object palette 1

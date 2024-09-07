@@ -58,6 +58,7 @@ namespace emu::SM83
         }
 
         if (mmu._segmentFlags[segmentIdx] & MMRF_ReadOnly ||
+            mmu._segmentFlags[segmentIdx] & MMRF_DMALock ||
             !mmu._segmentPtrs[segmentIdx])
         {
             return;
@@ -75,7 +76,8 @@ namespace emu::SM83
             segmentIdx = MMU_SEGMENT_COUNT;
         }
 
-        if (!mmu._segmentPtrs[segmentIdx])
+        if (!mmu._segmentPtrs[segmentIdx] || 
+            mmu._segmentFlags[segmentIdx] & MMRF_DMALock)
         {
             return 0xFF;
         }

@@ -488,7 +488,6 @@ namespace emu::SM83
 
             // Unused IO registers need to always be 0xFF
             memset(cpu._peripheralIO.UNKNOWN0, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN0));
-            memset(cpu._peripheralIO.UNKNOWN1, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN1));
             memset(cpu._peripheralIO.UNKNOWN2, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN2));
             memset(cpu._peripheralIO.UNKNOWN3, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN3));
             memset(cpu._peripheralIO.UNKNOWN4, 0xFF, sizeof(cpu._peripheralIO.UNKNOWN4));

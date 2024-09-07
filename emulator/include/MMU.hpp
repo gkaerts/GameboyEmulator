@@ -16,6 +16,7 @@ namespace emu::SM83
     {
         MMRF_ReadOnly = 0x01,
         MMRF_Redirect = 0x02,
+        MMRF_DMALock = 0x04,
     };
 
     enum class MMRegionHandle : uint64_t {};

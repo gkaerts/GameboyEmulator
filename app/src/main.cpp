@@ -1,6 +1,7 @@
 #include "SM83.hpp"
 #include "PPU.hpp"
 #include "MMU.hpp"
+#include "DMA.hpp"
 
 #include <chrono>
 #include <vector>
@@ -171,6 +172,7 @@ int main(int argc, char* argv[])
     emu::SM83::CPU cpu;
     emu::SM83::PPU ppu;
     emu::SM83::MMU mmu;
+    emu::SM83::DMACtrl dma;
 
     // Cartridge memory
     std::unique_ptr<uint8_t[]> ROMBank0 = std::make_unique<uint8_t[]>(16 * 1024);
@@ -179,8 +181,8 @@ int main(int argc, char* argv[])
     emu::SM83::MapMemoryRegion(mmu, 0x4000, 16 * 1024, ROMBank1.get(), emu::SM83::MMRF_ReadOnly);
 
     // Video memory
-     std::unique_ptr<uint8_t[]> VRAM = std::make_unique<uint8_t[]>(8 * 1024);
-     std::unique_ptr<uint8_t[]> OAMBank = std::make_unique<uint8_t[]>(256);
+    std::unique_ptr<uint8_t[]> VRAM = std::make_unique<uint8_t[]>(8 * 1024);
+    std::unique_ptr<uint8_t[]> OAMBank = std::make_unique<uint8_t[]>(256);
     emu::SM83::MapMemoryRegion(mmu, 0x8000, 8 * 1024, VRAM.get(), 0);
     emu::SM83::MapMemoryRegion(mmu, 0xFE00, 256, OAMBank.get(), 0);
 
@@ -228,8 +230,8 @@ int main(int argc, char* argv[])
         {
             for (int i = 0; i < 456; ++i)
             {
+                emu::SM83::TickOAMDMA(dma, mmu, cpu._peripheralIO);
                 emu::SM83::TickCPU(cpu, mmu, 1);
-                //emu::SM83::TickDMA(memCtrl);
                 emu::SM83::TickPPU(ppu, mmu, cpu._peripheralIO);
             }
         }
