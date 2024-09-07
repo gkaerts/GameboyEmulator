@@ -255,96 +255,109 @@ namespace emu::SM83
         bool TickPixelFetcherBackground(bool isWindowFetch, uint16_t currCycle, uint8_t LY, uint8_t SCX, uint8_t SCY, LCDControl lcdc, PixelFetcher& pixelFetch, const uint8_t* vram)
         {
             bool fifoPopulated = false;
-            if (currCycle % 2 == 1)
+            
             {
                 switch (pixelFetch._currStage)
                 {
                 case PixelFetchStage::FetchTileNumber:
                 {
-                    uint16_t tileMapAddress = 0;
-
-                    if (isWindowFetch)
+                    // 2 cycles - memory access
+                    if (currCycle % 2 == 1)
                     {
-                        tileMapAddress = lcdc._bits._windowTileMapSelect ?
-                            TILE_MAP_1_BEGIN :
-                            TILE_MAP_0_BEGIN;
+                        uint16_t tileMapAddress = 0;
+
+                        if (isWindowFetch)
+                        {
+                            tileMapAddress = lcdc._bits._windowTileMapSelect ?
+                                TILE_MAP_1_BEGIN :
+                                TILE_MAP_0_BEGIN;
+                        }
+                        else
+                        {
+                            // Normal background pixel fetch
+                            tileMapAddress = lcdc._bits._bgTileMapSelect ?
+                                TILE_MAP_1_BEGIN :
+                                TILE_MAP_0_BEGIN;
+                        }
+
+                        // Address for tile at current X tile position
+                        uint16_t offset = pixelFetch._currTileXPos;
+                        
+
+                        if (isWindowFetch)
+                        {
+                            // Window fetch based on current window line
+                            offset += 32 * (pixelFetch._windowLineCounter / 8);
+                        }
+                        else
+                        {
+                            // Offset for horizontal tile scrolling
+                            offset = (offset + (SCX / 8)) & 0x1F;
+
+                            // Background fetch scrolls based on SCX and current scanline (LY)
+                            offset += 32 * (((LY + SCY) & 0xFF) / 8);
+                        }
+
+                        offset = offset & 0x3FF;
+
+                        pixelFetch._currTileIdx = VRAMRead(vram, tileMapAddress + offset);
+                        pixelFetch._currStage = PixelFetchStage::FetchTileDataLow;
                     }
-                    else
-                    {
-                        // Normal background pixel fetch
-                        tileMapAddress = lcdc._bits._bgTileMapSelect ?
-                            TILE_MAP_1_BEGIN :
-                            TILE_MAP_0_BEGIN;
-                    }
-
-                    // Address for tile at current X tile position
-                    uint16_t offset = pixelFetch._currTileXPos;
-                    
-
-                    if (isWindowFetch)
-                    {
-                        // Window fetch based on current window line
-                        offset += 32 * (pixelFetch._windowLineCounter / 8);
-                    }
-                    else
-                    {
-                        // Offset for horizontal tile scrolling
-                        offset = (offset + (SCX / 8)) & 0x1F;
-
-                        // Background fetch scrolls based on SCX and current scanline (LY)
-                        offset += 32 * (((LY + SCY) & 0xFF) / 8);
-                    }
-
-                    offset = offset & 0x3FF;
-
-                    pixelFetch._currTileIdx = VRAMRead(vram, tileMapAddress + offset);
-                    pixelFetch._currStage = PixelFetchStage::FetchTileDataLow;
                 }
                     break;
 
                 case PixelFetchStage::FetchTileDataLow:
                 {
-                    // Offset which row to fetch by current scanline and vertical scroll register
-                    uint16_t tileOffset = isWindowFetch ?
-                        2 * (pixelFetch._windowLineCounter % 8) :
-                        2 * ((LY + SCY) % 8);
+                    // 2 cycles - memory access
+                    if (currCycle % 2 == 1)
+                    {
+                        // Offset which row to fetch by current scanline and vertical scroll register
+                        uint16_t tileOffset = isWindowFetch ?
+                            2 * (pixelFetch._windowLineCounter % 8) :
+                            2 * ((LY + SCY) % 8);
 
-                    uint8_t lowBits = lcdc._bits._bgWindowEnabled ? 
-                        FetchBGTileData(vram, lcdc, pixelFetch._currTileIdx, tileOffset + 0) :
-                        0;
+                        uint8_t lowBits = lcdc._bits._bgWindowEnabled ? 
+                            FetchBGTileData(vram, lcdc, pixelFetch._currTileIdx, tileOffset + 0) :
+                            0;
 
-                    pixelFetch._currTileLow = lowBits;
-                    pixelFetch._currStage = PixelFetchStage::FetchTileDataHigh;
+                        pixelFetch._currTileLow = lowBits;
+                        pixelFetch._currStage = PixelFetchStage::FetchTileDataHigh;
+                    }
                 }
                     break;
 
                 case PixelFetchStage::FetchTileDataHigh:
                 {
-                    // Same as low bits, but offset by one byte in the fetch
-                    uint16_t tileOffset = isWindowFetch ?
-                        2 * (pixelFetch._windowLineCounter % 8) :
-                        2 * ((LY + SCY) % 8);
-
-                    uint8_t highBits = lcdc._bits._bgWindowEnabled ? 
-                        FetchBGTileData(vram, lcdc, pixelFetch._currTileIdx, tileOffset + 1) :
-                        0;
-                        
-                    pixelFetch._currTileHigh = highBits;
-                    pixelFetch._currStage = PixelFetchStage::PushToFIFO;
-
-                    if (pixelFetch._numBGTilesFetchedInCurrScanline == 0)
+                    // 2 cycles - memory access
+                    if (currCycle % 2 == 1)
                     {
-                        // Reset to first stage if this is the first time we've fetched a tile
-                        pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
-                        pixelFetch._currTileXPos = 0;
-                    }
+                        // Same as low bits, but offset by one byte in the fetch
+                        uint16_t tileOffset = isWindowFetch ?
+                            2 * (pixelFetch._windowLineCounter % 8) :
+                            2 * ((LY + SCY) % 8);
 
-                    pixelFetch._numBGTilesFetchedInCurrScanline++;
+                        uint8_t highBits = lcdc._bits._bgWindowEnabled ? 
+                            FetchBGTileData(vram, lcdc, pixelFetch._currTileIdx, tileOffset + 1) :
+                            0;
+                            
+                        pixelFetch._currTileHigh = highBits;
+                        pixelFetch._currStage = PixelFetchStage::PushToFIFO;
+
+                        if (pixelFetch._numBGTilesFetchedInCurrScanline == 0)
+                        {
+                            // Reset to first stage if this is the first time we've fetched a tile
+                            pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
+                            pixelFetch._currTileXPos = 0;
+                        }
+
+                        pixelFetch._numBGTilesFetchedInCurrScanline++;
+                    }
                 }
                     break;
 
                 case PixelFetchStage::PushToFIFO:
                 {
+                    // 1+ cycles
                     // Only push pixels if BG FIFO is empty, otherwise keep retrying
                     if (PixelFIFOEmpty(pixelFetch._bgFifo))
                     {
@@ -378,94 +391,97 @@ namespace emu::SM83
             bool fifoPopulated = false;
             OAMEntry sprite = objFetch._spriteList[spriteIdx];
             uint8_t spriteHeight = lcdc._bits._spriteSize ? 16 : 8;
-            //if (currCycle % 2 == 1)
+                      
+            switch (pixelFetch._currStage)
             {
-                switch (pixelFetch._currStage)
+            case PixelFetchStage::FetchTileNumber:
+            {
+                // 1 cycle
+                pixelFetch._currTileIdx = sprite._tileIdx;
+                if (lcdc._bits._spriteSize > 0)
                 {
-                case PixelFetchStage::FetchTileNumber:
-                {
-                    pixelFetch._currTileIdx = sprite._tileIdx;
-                    if (lcdc._bits._spriteSize > 0)
-                    {
-                        pixelFetch._currTileIdx = pixelFetch._currTileIdx & 0xFE;
-                    }
-                    
-                    pixelFetch._currStage = PixelFetchStage::FetchTileDataLow;
+                    pixelFetch._currTileIdx = pixelFetch._currTileIdx & 0xFE;
                 }
-                    break;
-
-                case PixelFetchStage::FetchTileDataLow:
-                {
-                    if (currCycle % 2 == 1)
-                    {
-                        uint16_t rowIdx = (LY + 16) - sprite._posY;
-                        uint16_t tileOffset = 2 * (rowIdx % spriteHeight);
-                        if (sprite._attribs._yFlip)
-                        {
-                            tileOffset = 2 * ((spriteHeight - 1) - (rowIdx % spriteHeight));
-                        }
-
-                        uint8_t lowBits = lcdc._bits._spriteEnabled ? 
-                            FetchSpriteTileData(vram, pixelFetch._currTileIdx, tileOffset + 0) :
-                            0;
-
-                        pixelFetch._currTileLow = lowBits;
-                        if (sprite._attribs._xFlip)
-                        {
-                            pixelFetch._currTileLow = ReverseBits(pixelFetch._currTileLow);
-                        }
-
-                        pixelFetch._currStage = PixelFetchStage::FetchTileDataHigh;
-                    }
-                }
-                    break;
-
-                case PixelFetchStage::FetchTileDataHigh:
-                {
-                    if (currCycle % 2 == 1)
-                    {
-                        // Same as low bits, but offset by one byte in the fetch
-                        uint16_t rowIdx = (LY + 16) - sprite._posY;
-                        uint16_t tileOffset = 2 * (rowIdx % spriteHeight);
-                        if (sprite._attribs._yFlip)
-                        {
-                            tileOffset = 2 * ((spriteHeight - 1) - (rowIdx % spriteHeight));
-                        }
-
-                        uint8_t highBits = lcdc._bits._spriteEnabled ? 
-                            FetchSpriteTileData(vram, pixelFetch._currTileIdx, tileOffset + 1) :
-                            0;
-
-                        pixelFetch._currTileHigh = highBits;
-                        if (sprite._attribs._xFlip)
-                        {
-                            pixelFetch._currTileHigh = ReverseBits(pixelFetch._currTileHigh);
-                        }
-
-                        pixelFetch._currStage = PixelFetchStage::PushToFIFO;
-                    }
-                }
-                    break;
-
-                case PixelFetchStage::PushToFIFO:
-                {
-                    PixelFIFOPushSpriteTile(
-                        pixelFetch._spriteFifo, 
-                        pixelFetch._currTileLow, 
-                        pixelFetch._currTileHigh,
-                        sprite._attribs._dmgPalette ? PALETTE_ID_OBP1 : PALETTE_ID_OBP0,
-                        sprite._attribs._priority);
                 
-                    pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
-                    pixelFetch._visibleSpriteBits &= ~(1 << spriteIdx);
-                    fifoPopulated = true;   
-                }
-                    break;
-                
-                default:
-                    break;
+                pixelFetch._currStage = PixelFetchStage::FetchTileDataLow;
+            }
+                break;
+
+            case PixelFetchStage::FetchTileDataLow:
+            {
+                // 2 cycles - memory access
+                if (currCycle % 2 == 1)
+                {
+                    uint16_t rowIdx = (LY + 16) - sprite._posY;
+                    uint16_t tileOffset = 2 * (rowIdx % spriteHeight);
+                    if (sprite._attribs._yFlip)
+                    {
+                        tileOffset = 2 * ((spriteHeight - 1) - (rowIdx % spriteHeight));
+                    }
+
+                    uint8_t lowBits = lcdc._bits._spriteEnabled ? 
+                        FetchSpriteTileData(vram, pixelFetch._currTileIdx, tileOffset + 0) :
+                        0;
+
+                    pixelFetch._currTileLow = lowBits;
+                    if (sprite._attribs._xFlip)
+                    {
+                        pixelFetch._currTileLow = ReverseBits(pixelFetch._currTileLow);
+                    }
+
+                    pixelFetch._currStage = PixelFetchStage::FetchTileDataHigh;
                 }
             }
+                break;
+
+            case PixelFetchStage::FetchTileDataHigh:
+            {
+                // 2 cycles - memory access
+                if (currCycle % 2 == 1)
+                {
+                    // Same as low bits, but offset by one byte in the fetch
+                    uint16_t rowIdx = (LY + 16) - sprite._posY;
+                    uint16_t tileOffset = 2 * (rowIdx % spriteHeight);
+                    if (sprite._attribs._yFlip)
+                    {
+                        tileOffset = 2 * ((spriteHeight - 1) - (rowIdx % spriteHeight));
+                    }
+
+                    uint8_t highBits = lcdc._bits._spriteEnabled ? 
+                        FetchSpriteTileData(vram, pixelFetch._currTileIdx, tileOffset + 1) :
+                        0;
+
+                    pixelFetch._currTileHigh = highBits;
+                    if (sprite._attribs._xFlip)
+                    {
+                        pixelFetch._currTileHigh = ReverseBits(pixelFetch._currTileHigh);
+                    }
+
+                    pixelFetch._currStage = PixelFetchStage::PushToFIFO;
+                }
+            }
+                break;
+
+            case PixelFetchStage::PushToFIFO:
+            {
+                // 1 cycle
+                PixelFIFOPushSpriteTile(
+                    pixelFetch._spriteFifo, 
+                    pixelFetch._currTileLow, 
+                    pixelFetch._currTileHigh,
+                    sprite._attribs._dmgPalette ? PALETTE_ID_OBP1 : PALETTE_ID_OBP0,
+                    sprite._attribs._priority);
+            
+                pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
+                pixelFetch._visibleSpriteBits &= ~(1 << spriteIdx);
+                fifoPopulated = true;   
+            }
+                break;
+            
+            default:
+                break;
+            }
+            
             
             return fifoPopulated;
         }
@@ -517,7 +533,7 @@ namespace emu::SM83
             UnmapMemoryRegion(mmu, OAM_ADDR, OAM_SIZE);
             TickObjectFetcher(ppu._currCycle, pIO.LY, lcdc, ppu._objFetch, ppu._oam);
 
-            if (ppu._currCycle + 1 > CYCLES_PER_OAM_SCAN)
+            if (ppu._currCycle + 1 >= CYCLES_PER_OAM_SCAN)
             {
                 // Move to pixel fetch stage
                 ppu._currMode = PPU::Mode::PixelFetch;
@@ -544,6 +560,8 @@ namespace emu::SM83
                 if (visibleSpriteBits)
                 {
                     ppu._pixelFetch._visibleSpriteBits = visibleSpriteBits;
+
+                    // Potential penalty up to 6 cycles due to resetting of background FIFO when entering sprite rendering mode
                     ppu._pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
                 }
             }
@@ -557,6 +575,8 @@ namespace emu::SM83
                 ppu._pixelFetch._currMode = PixelFetcher::Mode::Window;
                 ppu._pixelFetch._currStage = PixelFetchStage::FetchTileNumber;
                 ppu._pixelFetch._currTileXPos = 0;
+
+                // Potential 6 cycle penalty when entering Window mode due to FIFO clear
                 PixelFIFOClear(ppu._pixelFetch._bgFifo);
             }
            
@@ -572,7 +592,8 @@ namespace emu::SM83
                     ppu._pixelFetch,
                     ppu._vram);
             }
-            else
+            
+            if (ppu._pixelFetch._visibleSpriteBits && !PixelFIFOEmpty(ppu._pixelFetch._bgFifo))
             {
                 unsigned long index = 0;
                 _BitScanForward(&index, ppu._pixelFetch._visibleSpriteBits);
@@ -599,7 +620,7 @@ namespace emu::SM83
             if (ppu._currPixelXPos >= SCREEN_WIDTH)
             {
                 // Move to HBLANK stage
-                //EMU_ASSERT(ppu._currCycle >= 80 + 172 && ppu._currCycle <= 80 + 289);
+                EMU_ASSERT(ppu._currCycle + 1 >= 80 + 172 && ppu._currCycle + 1 <= 80 + 289);
                 ppu._currMode = PPU::Mode::HBlank;
 
                 if ((pIO.STAT & (1 << 3)))
