@@ -51,6 +51,10 @@ namespace emu::SM83
 
     void MMUWrite(MMU& mmu, uint16_t address, uint8_t val)
     {
+        mmu._address = address;
+        mmu._RW = MMU_WRITE;
+        mmu._data = val;
+
         uint16_t segmentIdx = address / MMU_SEGMENT_SIZE;
         if (mmu._segmentFlags[segmentIdx] & MMRF_Redirect)
         {
@@ -70,19 +74,28 @@ namespace emu::SM83
 
     uint8_t MMURead(MMU& mmu, uint16_t address)
     {
+        mmu._address = address;
+        mmu._RW = MMU_READ;
+
         uint16_t segmentIdx = address / MMU_SEGMENT_SIZE;
         if (mmu._segmentFlags[segmentIdx] & MMRF_Redirect)
         {
             segmentIdx = MMU_SEGMENT_COUNT;
         }
 
+        uint8_t val = 0;
         if (!mmu._segmentPtrs[segmentIdx] || 
             mmu._segmentFlags[segmentIdx] & MMRF_DMALock)
         {
-            return 0xFF;
+            val = 0xFF;
+        }
+        else
+        {
+            uint16_t offsetInSegment = address % MMU_SEGMENT_SIZE;
+            val = mmu._segmentPtrs[segmentIdx][offsetInSegment];
         }
 
-        uint16_t offsetInSegment = address % MMU_SEGMENT_SIZE;
-        return mmu._segmentPtrs[segmentIdx][offsetInSegment];
+        mmu._data = val;
+        return val;
     }
 }

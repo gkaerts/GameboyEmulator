@@ -6,10 +6,17 @@ namespace emu::SM83
 {
     static constexpr uint16_t MMU_SEGMENT_SIZE = 256;
     static constexpr uint16_t MMU_SEGMENT_COUNT = (64 * 1024) / 256;
+
+    static constexpr uint8_t MMU_READ = 1;
+    static constexpr uint8_t MMU_WRITE = 2;
     struct MMU
     {
         uint8_t* _segmentPtrs[MMU_SEGMENT_COUNT + 1] = {};
         uint8_t _segmentFlags[MMU_SEGMENT_COUNT + 1] = {};
+
+        uint16_t _address = 0;
+        uint16_t _RW = 0;
+        uint8_t _data = 0;
     };
 
     enum MMRegionFlags

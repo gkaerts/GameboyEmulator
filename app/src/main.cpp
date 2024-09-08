@@ -2,6 +2,7 @@
 #include "PPU.hpp"
 #include "MMU.hpp"
 #include "DMA.hpp"
+#include "Cartridge.hpp"
 
 #include <chrono>
 #include <vector>
@@ -169,16 +170,33 @@ int main(int argc, char* argv[])
     ShowWindow(hwnd, SW_NORMAL);
     UpdateWindow(hwnd);
 
+    
+    std::unique_ptr<uint8_t[]> rom;
+    uint32_t romSize = 0;
+    if (argc > 1)
+    {
+        const char* romPath = argv[1];
+        FILE* file = nullptr;
+        if (!fopen_s(&file, romPath, "rb"))
+        {
+            if (file)
+            {
+                fseek(file, 0, SEEK_END);
+                romSize = uint32_t(ftell(file));
+                fseek(file, 0, SEEK_SET);
+
+                rom = std::make_unique<uint8_t[]>(romSize);
+
+                fread_s(rom.get(), romSize, 1, romSize, file);
+                fclose(file);
+            }
+        }
+    }
+
     emu::SM83::CPU cpu;
     emu::SM83::PPU ppu;
     emu::SM83::MMU mmu;
     emu::SM83::DMACtrl dma;
-
-    // Cartridge memory
-    std::unique_ptr<uint8_t[]> ROMBank0 = std::make_unique<uint8_t[]>(16 * 1024);
-    std::unique_ptr<uint8_t[]> ROMBank1 = std::make_unique<uint8_t[]>(16 * 1024);
-    emu::SM83::MapMemoryRegion(mmu, 0x0000, 16 * 1024, ROMBank0.get(), emu::SM83::MMRF_ReadOnly);
-    emu::SM83::MapMemoryRegion(mmu, 0x4000, 16 * 1024, ROMBank1.get(), emu::SM83::MMRF_ReadOnly);
 
     // Video memory
     std::unique_ptr<uint8_t[]> VRAM = std::make_unique<uint8_t[]>(8 * 1024);
@@ -194,25 +212,16 @@ int main(int argc, char* argv[])
     emu::SM83::MapMemoryRegion(mmu, 0xE000, 4 * 1024, WRAMBank0.get(), 0);  // Echo RAM
     emu::SM83::MapMemoryRegion(mmu, 0xF000, 4 * 1024, WRAMBank1.get(), 0);  // Echo RAM
 
-    if (argc > 1)
-    {
-        const char* romPath = argv[1];
-        FILE* file = nullptr;
-        if (!fopen_s(&file, romPath, "rb"))
-        {
-            if (file)
-            {
-                fread_s(ROMBank0.get(), 16 * 1024, 1, 16 * 1024, file);
-                fread_s(ROMBank1.get(), 16 * 1024, 1, 16 * 1024, file);
-                fclose(file);
-            }
-        }
-    }
-
     emu::SM83::BootCPU(cpu, 0, 0);
     emu::SM83::MapPeripheralIOMemory(cpu, mmu);
 
     emu::SM83::BootPPU(ppu, VRAM.get(), OAMBank.get(), PPUDrawPixel, &drawCtxt);
+
+    emu::SM83::Cartridge cart;
+    bool romLoaded = emu::SM83::LoadROM(cart, rom.get(), romSize);
+    EMU_ASSERT(romLoaded);
+
+    emu::SM83::MapCartridgeROM(cart, mmu);
 
     auto time = std::chrono::system_clock::now();
 
@@ -232,6 +241,7 @@ int main(int argc, char* argv[])
             {
                 emu::SM83::TickOAMDMA(dma, mmu, cpu._peripheralIO);
                 emu::SM83::TickCPU(cpu, mmu, 1);
+                emu::SM83::TickMBC(cart, mmu);
                 emu::SM83::TickPPU(ppu, mmu, cpu._peripheralIO);
             }
         }
